@@ -20,7 +20,7 @@ System_Boundary(iot_boundary, "IoT Monitoring Platform") {
     Container_Ext(redis, "Redis", "In-memory Cache", "Кэширование запросов")
     Container_Ext(postgres_devices, "PostgreSQL (Devices)", "Реляционная БД", "Шардированная БД устройств. Синхронная репликация каждого шарда")
     Container_Ext(postgres_commands, "PostgreSQL (Commands)", "Реляционная БД", "БД для команд (Go-сервис)")
-    Container_Ext(cassandra, "Cassandra", "NoSQL", "Хранение событий")
+    Container_Ext(clickhouse, "Clickhouse", "NoSQL", "Хранение телеметрии")
     Container_Ext(minio, "MinIO", "Объектное хранилище", "Сохранение ошибок DLT (JSON)")
     Container_Ext(camunda, "Camunda", "BPMN Engine", "Оркестрация процессов")
 
@@ -41,10 +41,10 @@ Rel(events_collector, kafka_cluster, "Consume: events-topic", "Kafka")
 Rel(failed_events_processor, kafka_cluster, "Consume: dlt-topic", "Kafka")
 Rel(device_collector, kafka_cluster, "Consume: device-id-topic", "Kafka")
 
-Rel(events_collector, cassandra, "Write: события")
+Rel(events_collector, clickhouse, "Write: события")
 Rel(failed_events_processor, minio, "Save: JSON")
 
-Rel(event_service, cassandra, "Read: события")
+Rel(event_service, clickhouse, "Read: события")
 Rel(device_service, postgres_devices, "Sharded read/write", "JDBC")
 Rel(command_service, postgres_commands, "Read/write", "JDBC")
 
