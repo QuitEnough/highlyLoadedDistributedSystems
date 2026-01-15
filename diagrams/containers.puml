@@ -14,7 +14,7 @@ System_Boundary(iot_boundary, "IoT Monitoring Platform") {
     Container(device_collector, "Device Collector", "Spring Boot", "Читает device-id-topic → сохраняет в PostgreSQL (Devices)")
     Container(event_service, "Event Service", "Spring Boot", "Чтение событий из Cassandra")
     Container(device_service, "Device Service", "Spring Boot + ShardingSphere", "CRUD API для устройств. Шардирование через JDBC.")
-    Container(command_service, "Router Manager Service", "Go + gRPC", "Принимает команды по gRPC → отправляет устройствам. Работает с отдельной БД PostgreSQL (Commands).")
+    Container(command_service, "Command Service", "Go + gRPC", "Принимает команды по gRPC → отправляет устройствам. Работает с отдельной БД PostgreSQL (Commands).")
 
     Container_Ext(kafka_cluster, "Kafka Cluster", "Kafka", "event / dlt / device-id топики")
     Container_Ext(redis, "Redis", "In-memory Cache", "Кэширование запросов")
