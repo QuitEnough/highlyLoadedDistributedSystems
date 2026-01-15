@@ -1,0 +1,53 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Container_Ext(iot_devices, "IoT Devices", "Встраиваемые устройства", "Отправляют телеметрию и получают команды")
+Container_Ext(keycloak, "Keycloak", "OAuth2/OIDC", "Аутентификация и авторизация")
+
+System_Boundary(iot_boundary, "IoT Monitoring Platform") {
+
+    Container(api_gateway, "API Gateway", "Spring Cloud Gateway", "Маршрутизация и авторизация")
+    Container(api_orchestrator, "API Orchestrator", "Spring Boot", "Оркестратор: вызывает event-, device- и command- сервисы")
+
+    Container(events_collector, "Events Collector", "Spring Boot", "Читает events-topic → сохраняет в ClickHouse")
+    Container(failed_events_processor, "Failed Events Processor", "Spring Boot", "Читает dlt-topic → сохраняет JSON в MinIO")
+    Container(device_collector, "Device Collector", "Spring Boot", "Читает device-id-topic → сохраняет в PostgreSQL (Devices)")
+    Container(event_service, "Event Service", "Spring Boot", "Чтение событий из Cassandra")
+    Container(device_service, "Device Service", "Spring Boot + ShardingSphere", "CRUD API для устройств. Шардирование через JDBC.")
+    Container(command_service, "Router Manager Service", "Go + gRPC", "Принимает команды по gRPC → отправляет устройствам. Работает с отдельной БД PostgreSQL (Commands).")
+
+    Container_Ext(kafka_cluster, "Kafka Cluster", "Kafka", "event / dlt / device-id топики")
+    Container_Ext(redis, "Redis", "In-memory Cache", "Кэширование запросов")
+    Container_Ext(postgres_devices, "PostgreSQL (Devices)", "Реляционная БД", "Шардированная БД устройств. Синхронная репликация каждого шарда")
+    Container_Ext(postgres_commands, "PostgreSQL (Commands)", "Реляционная БД", "БД для команд (Go-сервис)")
+    Container_Ext(cassandra, "Cassandra", "NoSQL", "Хранение событий")
+    Container_Ext(minio, "MinIO", "Объектное хранилище", "Сохранение ошибок DLT (JSON)")
+    Container_Ext(camunda, "Camunda", "BPMN Engine", "Оркестрация процессов")
+
+}
+
+Rel(iot_devices, command_service, "Получение команд", "gRPC")
+Rel(iot_devices, events_collector, "Отправка телеметрии", "Kafka (AVRO)")
+
+Rel(api_gateway, keycloak, "OIDC авторизация")
+Rel(api_gateway, api_orchestrator, "REST", "JWT")
+
+Rel(api_orchestrator, event_service, "REST")
+Rel(api_orchestrator, device_service, "REST")
+Rel(api_orchestrator, command_service, "gRPC", "Отправка команд")
+Rel(api_orchestrator, redis, "Кэширование")
+
+Rel(events_collector, kafka_cluster, "Consume: events-topic", "Kafka")
+Rel(failed_events_processor, kafka_cluster, "Consume: dlt-topic", "Kafka")
+Rel(device_collector, kafka_cluster, "Consume: device-id-topic", "Kafka")
+
+Rel(events_collector, cassandra, "Write: события")
+Rel(failed_events_processor, minio, "Save: JSON")
+
+Rel(event_service, cassandra, "Read: события")
+Rel(device_service, postgres_devices, "Sharded read/write", "JDBC")
+Rel(command_service, postgres_commands, "Read/write", "JDBC")
+
+Rel(api_orchestrator, camunda, "Start BPMN process", "REST")
+
+@enduml
