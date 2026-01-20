@@ -16,7 +16,6 @@ Java 24, Spring Boot 3.5 (WebFlux / Web MVC), Go 1.20+ (Gin/Fiber/net/http), Apa
 - [Порты и сервисы](#порты-и-сервисы)
 - [Наблюдаемость](#наблюдаемость)
 - [Тестирование](#тестирование)
-- [Ветки и стратегия](#ветки-и-стратегия)
 
 ---
 
@@ -27,7 +26,7 @@ Java 24, Spring Boot 3.5 (WebFlux / Web MVC), Go 1.20+ (Gin/Fiber/net/http), Apa
 Файлы находятся в каталоге [`diagrams/`](./diagrams/):
 
 - **Context (уровень системы)** — [`diagrams/context.puml`](./diagrams/context.puml)
-- **Container (уровень системы)** — [`diagrams/containers.puml`](./diagrams/containers.puml)
+- **Container (уровень системы)** — [`diagrams/containers.puml`](diagrams/containers.puml)
 
 Рендерить можно любым PlantUML‑совместимым плагином или CI. Файлы используют библиотеку **[C4-PlantUML](https://github.com/plantuml-stdlib/C4-PlantUML)** (включение по URL).
 
@@ -95,7 +94,7 @@ make all
 ```bash
 # В корне репозитория
 cd infrastructure
-docker compose --env-file ../.env -f docker-compose.yaml -d
+docker compose --env-file ../.env up -d
 ```
 
 ## 🌐 Порты и сервисы
@@ -127,12 +126,6 @@ docker compose --env-file ../.env -f docker-compose.yaml -d
 - **Unit-тесты:** JUnit 5 + Mockito.
 - **Интеграционные тесты:** Testcontainers (PostgreSQL, Kafka, Keycloak).
 - **Архитектурные тесты:** ArchUnit (проверка Hexagonal Architecture).
-
-## 🌿 Ветки и стратегия
-
-В репозитории предусмотрены обучающие ветки:
-
-- **STEP-1:** Архитектурное описание и инженерная среда
 
 
 ## ✍️ Автор

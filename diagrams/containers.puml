@@ -1,53 +1,73 @@
 @startuml
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
 
-Container_Ext(iot_devices, "IoT Devices", "Встраиваемые устройства", "Отправляют телеметрию и получают команды")
-Container_Ext(keycloak, "Keycloak", "OAuth2/OIDC", "Аутентификация и авторизация")
+Person(engineer, "Инженер", "DevOps-инженер, настраивает и мониторит платформу")
+System_Ext(iot_device, "IoT Device", "Внешнее устройство: датчик, контроллер")
+System_Boundary(iot_platform, "IoT Monitoring Platform") {
 
-System_Boundary(iot_boundary, "IoT Monitoring Platform") {
+    ContainerDb(postgres, "PostgreSQL", "Database", "Реляционная БД: устройства, команды, процессы")
+    ContainerDb(keycloak_postgres, "Keycloak PostgreSQL", "Database", "Хранение пользователей Keycloak")
+    ContainerDb(clickhouse, "ClickHouse", "NoSQL Database", "Хранилище телеметрии IoT")
 
-    Container(api_gateway, "API Gateway", "Spring Cloud Gateway", "Маршрутизация и авторизация")
-    Container(api_orchestrator, "API Orchestrator", "Spring Boot", "Оркестратор: вызывает event-, device- и command- сервисы")
+    Container(kafka, "Kafka", "Message Broker", "Шина событий, топики: events/dlt/device-id")
+    Container(redis, "Redis", "In-Memory Cache", "Кэш, Pub/Sub")
+    Container(minio, "MinIO", "Object Storage", "Хранение файлов (S3 API), DLT-ошибки")
 
-    Container(events_collector, "Events Collector", "Spring Boot", "Читает events-topic → сохраняет в ClickHouse")
-    Container(failed_events_processor, "Failed Events Processor", "Spring Boot", "Читает dlt-topic → сохраняет JSON в MinIO")
-    Container(device_collector, "Device Collector", "Spring Boot", "Читает device-id-topic → сохраняет в PostgreSQL (Devices)")
-    Container(event_service, "Event Service", "Spring Boot", "Чтение событий из Cassandra")
-    Container(device_service, "Device Service", "Spring Boot + ShardingSphere", "CRUD API для устройств. Шардирование через JDBC.")
-    Container(command_service, "Command Service", "Go + gRPC", "Принимает команды по gRPC → отправляет устройствам. Работает с отдельной БД PostgreSQL (Commands).")
+    Container(keycloak, "Keycloak", "Identity Server", "SSO/OAuth2 сервер")
+    Container(camunda, "Camunda", "BPM Engine", "Движок workflow-процессов")
 
-    Container_Ext(kafka_cluster, "Kafka Cluster", "Kafka", "event / dlt / device-id топики")
-    Container_Ext(redis, "Redis", "In-memory Cache", "Кэширование запросов")
-    Container_Ext(postgres_devices, "PostgreSQL (Devices)", "Реляционная БД", "Шардированная БД устройств. Синхронная репликация каждого шарда")
-    Container_Ext(postgres_commands, "PostgreSQL (Commands)", "Реляционная БД", "БД для команд (Go-сервис)")
-    Container_Ext(clickhouse, "Clickhouse", "NoSQL", "Хранение телеметрии")
-    Container_Ext(minio, "MinIO", "Объектное хранилище", "Сохранение ошибок DLT (JSON)")
-    Container_Ext(camunda, "Camunda", "BPMN Engine", "Оркестрация процессов")
+    Container(schema_registry, "Schema Registry", "Confluent Schema Registry", "Управление Avro-схемами")
 
+    Container(prometheus, "Prometheus", "Time Series DB", "Сохраняет метрики, опрашивает экспортеры")
+    Container(grafana, "Grafana", "Dashboard UI", "Визуализация: метрики, логи, трейсы")
+    Container(loki, "Loki", "Log Aggregator", "Сохраняет структурированные логи")
+    Container(tempo, "Tempo", "Distributed Tracing", "Хранение трассировок")
+    Container(alloy, "Grafana Alloy", "OpenTelemetry Collector", "Собирает метрики, логи и трейсы")
+
+    Container(postgres_exporter, "Postgres Exporter", "Prometheus Exporter", "Собирает SQL-метрики из PostgreSQL")
+    Container(keycloak_postgres_exporter, "Keycloak Postgres Exporter", "Prometheus Exporter", "Собирает SQL-метрики из Keycloak DB")
+    Container(kafka_exporter, "Kafka Exporter", "Prometheus Exporter", "Собирает SQL-метрики из Kafka")
 }
 
-Rel(iot_devices, command_service, "Получение команд", "gRPC")
-Rel(iot_devices, events_collector, "Отправка телеметрии", "Kafka (AVRO)")
+Rel(iot_device, kafka, "Телеметрия (Avro)", "Kafka/Avro [ПЛАНИРУЕТСЯ]")
+Rel(engineer, grafana, "Мониторинг", "HTTP (дашборды)")
+Rel(engineer, keycloak, "Вход в систему", "Keycloak (OIDC)")
+Rel(engineer, camunda, "Мониторинг процессов", "HTTP (Camunda Cockpit)")
 
-Rel(api_gateway, keycloak, "OIDC авторизация")
-Rel(api_gateway, api_orchestrator, "REST", "JWT")
+Rel(camunda, keycloak, "Аутентификация пользователей", "OIDC")
 
-Rel(api_orchestrator, event_service, "REST")
-Rel(api_orchestrator, device_service, "REST")
-Rel(api_orchestrator, command_service, "gRPC", "Отправка команд")
-Rel(api_orchestrator, redis, "Кэширование")
+Rel(camunda, postgres, "Хранение процессов", "JDBC")
+Rel(keycloak, keycloak_postgres, "Хранение пользователей", "JDBC")
 
-Rel(events_collector, kafka_cluster, "Consume: events-topic", "Kafka")
-Rel(failed_events_processor, kafka_cluster, "Consume: dlt-topic", "Kafka")
-Rel(device_collector, kafka_cluster, "Consume: device-id-topic", "Kafka")
+Rel(postgres_exporter, postgres, "Подключение к БД", "PostgreSQL JDBC")
+Rel(keycloak_postgres_exporter, keycloak_postgres, "Подключение к БД", "PostgreSQL JDBC")
+Rel(kafka_exporter, kafka, "Подключение к Kafka", "Kafka client")
 
-Rel(events_collector, clickhouse, "Write: события")
-Rel(failed_events_processor, minio, "Save: JSON")
+Rel(kafka, schema_registry, "Валидация схем при produce", "HTTP REST API")
+Rel(schema_registry, kafka, "Хранение схем в _schemas", "Kafka producer")
+Rel_D(schema_registry, kafka, "Чтение схем при consume", "Kafka consumer + HTTP")
+Note on link
+  **Avro workflow:**
+  1. Producer регистрирует схему
+  2. Consumer получает схему по ID
+  3. Валидация на лету
+end note
 
-Rel(event_service, clickhouse, "Read: события")
-Rel(device_service, postgres_devices, "Sharded read/write", "JDBC")
-Rel(command_service, postgres_commands, "Read/write", "JDBC")
+Rel(prometheus, postgres_exporter, "Scrape метрик PostgreSQL", "HTTP /metrics")
+Rel(prometheus, keycloak_postgres_exporter, "Scrape метрик Keycloak DB", "HTTP /metrics")
+Rel(prometheus, kafka_exporter, "Scrape метрик Kafka", "HTTP /metrics")
+Rel(prometheus, keycloak, "Scrape метрик Keycloak", "HTTP /metrics")
+Rel(prometheus, grafana, "Scrape метрик Grafana", "HTTP /metrics")
+Rel(prometheus, alloy, "Scrape метрик Alloy", "HTTP /metrics")
+Rel(prometheus, loki, "Scrape метрик Loki", "HTTP /metrics")
+Rel(prometheus, tempo, "Scrape метрик Tempo", "HTTP /metrics")
+Rel(prometheus, schema_registry, "Scrape метрик Schema Registry", "HTTP /metrics")
 
-Rel(api_orchestrator, camunda, "Start BPMN process", "REST")
+Rel(alloy, loki, "Отправка логов", "Loki Push API")
+Rel(alloy, tempo, "Отправка трейсов", "OTLP/gRPC")
+
+Rel(grafana, prometheus, "Чтение метрик", "Prometheus datasource")
+Rel(grafana, loki, "Чтение логов", "Loki datasource")
+Rel(grafana, tempo, "Чтение трейсов", "Tempo datasource")
 
 @enduml

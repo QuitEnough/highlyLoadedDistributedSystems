@@ -21,7 +21,7 @@ services:
       retries: 5
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
+    image: prometheuscommunity/postgres-exporter:v0.15.0
     container_name: postgres-exporter
     ports:
       - "${POSTGRES_EXPORTER_PORT}:9187"
@@ -41,7 +41,7 @@ services:
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -64,7 +64,7 @@ services:
       retries: 20
 
   keycloak-postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
+    image: prometheuscommunity/postgres-exporter:v0.15.0
     container_name: keycloak-postgres-exporter
     ports:
       - "${KEYCLOAK_EXPORTER_PORT}:9187"
@@ -75,7 +75,7 @@ services:
         condition: service_healthy
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.2
+    image: quay.io/keycloak/keycloak:26.5.0
     container_name: keycloak
     command: start-dev --metrics-enabled=true
     ports:
@@ -92,7 +92,7 @@ services:
       KC_HEALTH_ENABLED: "true"
       KC_HTTP_MANAGEMENT_PORT: 9000
     volumes:
-      - ./infrastructure/keycloak/realm-config.json:/opt/keycloak/data/import/realm-config.json
+      - ./keycloak/realm-config.json:/opt/keycloak/data/import/realm-config.json
     depends_on:
       keycloak-postgres:
         condition: service_healthy
@@ -103,7 +103,7 @@ services:
       retries: 30
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
     container_name: minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -122,7 +122,7 @@ services:
       retries: 3
 
   camunda:
-    image: camunda/camunda-bpm-platform:latest
+    image: camunda/camunda-bpm-platform:7.24.0
     container_name: camunda
     restart: unless-stopped
     ports:
@@ -142,7 +142,7 @@ services:
       retries: 10
 
   clickhouse:
-    image: clickhouse/clickhouse-server:24.8-alpine
+    image: clickhouse/clickhouse-server:24.12-alpine
     container_name: clickhouse
     restart: unless-stopped
     ports:
@@ -155,7 +155,7 @@ services:
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
       CLICKHOUSE_DEFAULT_DATABASE: ${CLICKHOUSE_DB}
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      test: ["CMD-SHELL", "echo 'SELECT 1' | clickhouse-client --port 9000"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -223,7 +223,7 @@ services:
         condition: service_healthy
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.0.0
     container_name: prometheus
     restart: unless-stopped
     ports:
@@ -268,7 +268,7 @@ services:
       timeout: 5s
 
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy:v1.12.2
     container_name: alloy
     restart: unless-stopped
     user: root
@@ -329,6 +329,5 @@ volumes:
   clickhouse_data:
   clickhouse_log:
   kafka_data:
-  schema_registry_data:
   tempo_data:
   grafana_data:
