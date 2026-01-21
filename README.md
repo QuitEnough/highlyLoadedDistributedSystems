@@ -42,6 +42,8 @@ Java 24, Spring Boot 3.5 (WebFlux / Web MVC), Go 1.20+ (Gin/Fiber/net/http), Apa
 ```
 iot-platform-/
 ├── diagrams/                       # C4-диаграммы архитектуры
+│ ├── events-collector-service/
+│ │   └── sequence.puml 
 │ ├── context.puml
 │ └── containers.puml
 ├── infrastructure/                 # Конфигурации инфраструктуры
