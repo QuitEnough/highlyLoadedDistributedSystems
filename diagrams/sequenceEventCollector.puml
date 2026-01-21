@@ -1,0 +1,88 @@
+'@startuml
+'title Поток обработки события в Events Collector
+'
+'actor "Kafka (топик events)" as Kafka
+'participant "EventsCollector" as EC
+'database "Redis" as R
+'database "ClickHouse" as CH
+'participant "OutboxScheduler" as OS
+'actor "Kafka (топик devices)" as KafkaOut
+'
+'== Получение и обработка события ==
+'Kafka -> EC : DeviceEvent (Avro)
+'EC -> R : SADD devices:seen(deviceId)
+'alt deviceId новый (SADD = 1)
+'    EC -> CH : INSERT INTO device_events(...)
+'    EC -> CH : INSERT INTO device_outbox(deviceId, status=0)
+'else deviceId уже был (SADD = 0)
+'    EC -> CH : INSERT INTO device_events(...) // всё равно сохраняем событие
+'end
+'EC --> Kafka : commit offset (manual ack)
+'
+'== Периодическая публикация из Outbox ==
+'OS -> R : SET outbox:lock <id> NX PX 5000
+'alt lock получен
+'    OS -> CH : SELECT * FROM device_outbox WHERE status = 0 LIMIT 100
+'    loop для каждой записи
+'        OS -> R : SADD devices:published(deviceId)
+'        alt новая публикация (SADD = 1)
+'            OS -> KafkaOut : produce(deviceId)
+'            OS -> CH : UPDATE device_outbox SET status=1, sent_at=now()
+'        end
+'    end
+'    OS -> R : DEL outbox:lock
+'end
+'
+'@enduml
+
+@startuml
+title Events Collector: Обработка события из Kafka
+
+actor "Kafka\n(топик events)" as Kafka
+participant "EventsCollector\n(@KafkaListener)" as EC
+database "Redis" as R
+database "ClickHouse\n(device_events, device_outbox)" as CH
+participant "OutboxProcessor\n(@Scheduled)" as OP
+actor "Kafka\n(топик devices)" as KafkaOut
+
+== 1. Успешная обработка события ==
+Kafka -> EC : DeviceEvent {eventId, deviceId, ...}
+EC -> R : SADD processed:events <eventId> EX 3600
+alt eventId НОВЫЙ (SADD = 1)
+    EC -> CH : INSERT INTO device_events(...)
+    EC -> CH : INSERT INTO device_outbox(deviceId, status=0)
+else eventId ДУБЛЬ (SADD = 0)
+    EC --> Kafka : commit offset (пропуск)
+    note right: Идемпотентность: дубль игнорируется
+end
+
+EC --> Kafka : commit offset (ручное подтверждение)
+
+== 2. Асинхронная публикация через Outbox ==
+OP -> R : SET outbox:lock "inst-1" NX PX 5000
+alt lock получен
+    OP -> CH : SELECT * FROM device_outbox WHERE status=0 LIMIT 100
+    loop для каждой записи
+        OP -> R : SADD published:devices <deviceId>
+        alt deviceId НОВЫЙ (SADD = 1)
+            OP -> KafkaOut : produce(deviceId)
+            OP -> CH : UPDATE device_outbox SET status=1, sent_at=now()
+        end
+    end
+    OP -> R : DEL outbox:lock
+else lock не получен (другой инстанс работает)
+    OP --> OP : пропуск итерации
+end
+
+== 3. Ошибка при обработке (например, ClickHouse недоступен) ==
+Kafka -> EC : DeviceEvent {eventId, ...}
+EC -> R : SADD processed:events <eventId> EX 3600
+EC -> CH : INSERT INTO device_events(...)
+note right: ОШИБКА: ClickHouse timeout
+...
+EC --> EC : выброс исключения
+note right: Spring Kafka DefaultErrorHandler:\n3 попытки с интервалом 100ms,\nзатем логгирование ошибки
+...
+EC --> Kafka : offset НЕ подтверждён
+note right: Kafka повторно доставит\nсообщение после ребаланса/рестарта
+@enduml

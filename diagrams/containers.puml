@@ -3,6 +3,7 @@
 
 Person(engineer, "Инженер", "DevOps-инженер, настраивает и мониторит платформу")
 System_Ext(iot_device, "IoT Device", "Внешнее устройство: датчик, контроллер")
+
 System_Boundary(iot_platform, "IoT Monitoring Platform") {
 
     ContainerDb(postgres, "PostgreSQL", "Database", "Реляционная БД: устройства, команды, процессы")
@@ -24,15 +25,38 @@ System_Boundary(iot_platform, "IoT Monitoring Platform") {
     Container(tempo, "Tempo", "Distributed Tracing", "Хранение трассировок")
     Container(alloy, "Grafana Alloy", "OpenTelemetry Collector", "Собирает метрики, логи и трейсы")
 
-    Container(postgres_exporter, "Postgres Exporter", "Prometheus Exporter", "Собирает SQL-метрики из PostgreSQL")
-    Container(keycloak_postgres_exporter, "Keycloak Postgres Exporter", "Prometheus Exporter", "Собирает SQL-метрики из Keycloak DB")
-    Container(kafka_exporter, "Kafka Exporter", "Prometheus Exporter", "Собирает SQL-метрики из Kafka")
+    Container(postgres_exporter, "Postgres Exporter", "Prometheus Exporter", "Читает статистику БД")
+    Container(keycloak_postgres_exporter, "Keycloak Postgres Exporter", "Prometheus Exporter", "Читает статистику БД")
+    Container(kafka_exporter, "Kafka Exporter", "Prometheus Exporter", "Собирает метрики из Kafka")
+    Container(redis_exporter, "Redis Exporter", "Prometheus Exporter", "Преобразует Redis INFO в /metrics")
+
+    Container(events_collector, "events-collector-service", "Spring Boot 3.5", "Сбор и обработка событий из Kafka") {
+            [KafkaListener] as KL
+            [EventCollector] as EC
+            [OutboxProcessor] as OP
+            [KafkaProducer] as KP
+    }
 }
 
 Rel(iot_device, kafka, "Телеметрия (Avro)", "Kafka/Avro [ПЛАНИРУЕТСЯ]")
 Rel(engineer, grafana, "Мониторинг", "HTTP (дашборды)")
 Rel(engineer, keycloak, "Вход в систему", "Keycloak (OIDC)")
 Rel(engineer, camunda, "Мониторинг процессов", "HTTP (Camunda Cockpit)")
+
+Rel(kafka, KL, "Потребление событий из топика 'events'", "Kafka Consumer (Avro)")
+Rel(KL, schema_registry, "Получение Avro-схемы", "HTTP REST")
+
+Rel(EC, redis, "Дедупликация device_id\nSADD devices:seen <id>\nTTL = 1h", "Redis Set + EXPIRE")
+
+Rel(EC, clickhouse, "Сохранение события в device_events\n(после дедупликации)\nCREATE TABLE ... ENGINE=MergeTree", "ClickHouse INSERT")
+
+Rel(EC, clickhouse, "Запись в device_outbox (status=NEW)\nпри первом появлении device_id", "Transactional Outbox")
+
+Rel(OP, redis, "Distributed lock:\nSET outbox:lock <id> NX PX 5000", "Redis SET NX PX")
+
+Rel(OP, clickhouse, "SELECT device_outbox WHERE status=0\nUPDATE status=SENT", "Outbox polling")
+Rel(OP, KP, "Публикация device_id", "Kafka Producer")
+Rel(KP, kafka, "Отправка в топик 'devices'", "Kafka produce")
 
 Rel(camunda, keycloak, "Аутентификация пользователей", "OIDC")
 
@@ -42,6 +66,7 @@ Rel(keycloak, keycloak_postgres, "Хранение пользователей", 
 Rel(postgres_exporter, postgres, "Подключение к БД", "PostgreSQL JDBC")
 Rel(keycloak_postgres_exporter, keycloak_postgres, "Подключение к БД", "PostgreSQL JDBC")
 Rel(kafka_exporter, kafka, "Подключение к Kafka", "Kafka client")
+Rel(redis_exporter, redis, "Читает Redis INFO")
 
 Rel(kafka, schema_registry, "Валидация схем при produce", "HTTP REST API")
 Rel(schema_registry, kafka, "Хранение схем в _schemas", "Kafka producer")
@@ -55,6 +80,7 @@ end note
 
 Rel(prometheus, postgres_exporter, "Scrape метрик PostgreSQL", "HTTP /metrics")
 Rel(prometheus, keycloak_postgres_exporter, "Scrape метрик Keycloak DB", "HTTP /metrics")
+Rel(prometheus, redis_exporter, "Scrape метрик Redis", "HTTP /metrics")
 Rel(prometheus, kafka_exporter, "Scrape метрик Kafka", "HTTP /metrics")
 Rel(prometheus, keycloak, "Scrape метрик Keycloak", "HTTP /metrics")
 Rel(prometheus, grafana, "Scrape метрик Grafana", "HTTP /metrics")

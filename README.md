@@ -32,10 +32,8 @@ Java 24, Spring Boot 3.5 (WebFlux / Web MVC), Go 1.20+ (Gin/Fiber/net/http), Apa
 
 #### Ключевые потоки:
 - **IoT-устройства** → отправляют телеметрию в Kafka (AVRO) → **Events Collector** → сохраняет в **ClickHouse**
-- **API Orchestrator** → координирует вызовы к **Event Service**, **Device Service**, **Command Service**
-- **Command Service (Go)** → отправляет команды устройствам по **gRPC**
 - Все сервисы → отправляют метрики и логи в **Grafana Alloy** → **Prometheus/Loki/Tempo** → **Grafana**
-- Аутентификация всех запросов через **Keycloak** (OIDC/JWT)
+
 
 ---
 
@@ -43,10 +41,10 @@ Java 24, Spring Boot 3.5 (WebFlux / Web MVC), Go 1.20+ (Gin/Fiber/net/http), Apa
 
 ```
 iot-platform-/
-├── diagrams/ # C4-диаграммы архитектуры
+├── diagrams/                       # C4-диаграммы архитектуры
 │ ├── context.puml
 │ └── containers.puml
-├── infrastructure/ # Конфигурации инфраструктуры
+├── infrastructure/                 # Конфигурации инфраструктуры
 │ ├── alloy/
 │ ├── grafana/
 │ ├── keycloak/
@@ -54,14 +52,28 @@ iot-platform-/
 │ ├── prometheus/
 │ ├── tempo/
 │ └── docker-compose.yaml
-├── Makefile # Сценарии автоматизации
-├── .env.example # Пример переменных окружения
+├── events-collector-service/       # Единственный микросервис модуля 2
+├── Makefile                        # Сценарии автоматизации
+├── .env.example                    # Пример переменных окружения
 └── README.md    
 ```
 
-> Микросервисы (`api-gateway`, `event-service`, `device-service`, `command-service` и др.) могут быть реализованы отдельно, но их сборка и запуск управляются через `Makefile` и `docker-compose`.
+> Микросервисы будущих модулей (`api-gateway`, `event-service`, `device-service`, `command-service` и др.) **не реализованы и не запускаются** на этом этапе.
 
 ---
+## 🌿 Ветки разработки
+Проект развивается пошагово через тематические ветки, каждая из которых представляет собой законченный учебный модуль:
+
+* `step-1` — Архитектурное описание и инженерная среда IoT микросервисной платформы.
+  Включает C4-диаграммы, настройку инфраструктуры (Keycloak, Grafana, Alloy, Kafka и др.), базовую конфигурацию наблюдаемости и безопасность на уровне шлюза.
+* `step-2` — Микросервисы и событийная архитектура: Kafka, ClickHouse, Redis и паттерны надёжности.
+  Реализует единственный микросервис events-collector-service, который:
+    * Получает телеметрию из Kafka (в формате AVRO)
+    * Выполняет дедупликацию с помощью Redis
+    * Сохраняет события в ClickHouse (device_events, device_outbox)
+    * Обеспечивает отказоустойчивость через повторные попытки и блокировки
+    * Экспортирует метрики, логи и трассировки для наблюдаемости
+  >PostgreSQL, MinIO, Camunda и другие микросервисы **не используются** в модуле 2 — они будут добавлены в последующих шагах.
 
 ## 🚀 Быстрый старт
 
@@ -84,8 +96,8 @@ cp .env.example .env
 make all
 ```
 **Что делает команда:**
-- Поднимает всю инфраструктуру: Postgres, ClickHouse, Kafka, Schema Registry, Redis, MinIO, Keycloak, Camunda, Prometheus, Grafana, Loki, Tempo, Alloy.
-- Запускает все микросервисы (если они включены в docker-compose).
+- Запускает всю инфраструктуру: Postgres, ClickHouse, Kafka, Schema Registry, Redis, MinIO, Keycloak, Camunda, Prometheus, Grafana, Loki, Tempo, Alloy.
+- Собирает и запускает **только** `events-collector-service`.
 
 ### Ручной запуск (без Makefile)
 
@@ -124,7 +136,7 @@ docker compose --env-file ../.env up -d
 ## 🧪 Тестирование
 
 - **Unit-тесты:** JUnit 5 + Mockito.
-- **Интеграционные тесты:** Testcontainers (PostgreSQL, Kafka, Keycloak).
+- **Интеграционные тесты:** Testcontainers (Kafka, ClickHouse, Redis, Keycloak).
 - **Архитектурные тесты:** ArchUnit (проверка Hexagonal Architecture).
 
 
