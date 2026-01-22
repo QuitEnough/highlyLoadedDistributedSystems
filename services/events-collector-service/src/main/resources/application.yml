@@ -1,0 +1,52 @@
+server:
+  port: 8091
+
+spring:
+  application:
+    name: events-collector-service
+
+  kafka:
+    consumer:
+      group-id: events-collector
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+    properties:
+      specific.avro.reader: true
+    listener:
+      ack-mode: record
+      concurrency: 1
+      poll-timeout: 10000
+
+  data:
+    redis:
+      password: ${REDIS_PASSWORD}
+      repositories:
+        enabled: false
+
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+  management:
+    server:
+      port: 8091
+    endpoints:
+      web:
+        exposure:
+          include: health,metrics,prometheus
+    endpoint:
+      health:
+        show-details: always
+    metrics:
+      export:
+        prometheus:
+          enabled: true
+
+  logging:
+    pattern:
+      console: "%clr(%d{HH:mm:ss.SSS}) %clr(%5p) %clr(${PID:- }) %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n"
+
+clickhouse:
+  username: ${CLICKHOUSE_USER}
+  password: ${CLICKHOUSE_PASSWORD}

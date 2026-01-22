@@ -1,0 +1,14 @@
+spring:
+  kafka:
+    bootstrap-servers: kafka:29092
+    consumer:
+      properties:
+        schema.registry.url: ${SCHEMA_REGISTRY_URL_DOCKER}
+
+  data:
+    redis:
+      host: redis
+      port: 6379
+
+clickhouse:
+  url: jdbc:clickhouse://clickhouse:${CLICKHOUSE_PORT}/${CLICKHOUSE_DB}

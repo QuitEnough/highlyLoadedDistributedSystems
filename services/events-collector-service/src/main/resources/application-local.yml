@@ -1,0 +1,14 @@
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      properties:
+        schema.registry.url: http://localhost:8081
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+clickhouse:
+  url: jdbc:clickhouse://localhost:${CLICKHOUSE_PORT}/${CLICKHOUSE_DB}

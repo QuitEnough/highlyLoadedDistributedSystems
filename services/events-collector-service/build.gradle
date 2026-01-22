@@ -1,0 +1,77 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version "$springBootVersion"
+    id 'io.spring.dependency-management' version "$springDependencyManagementVersion"
+    id "com.github.davidmc24.gradle.plugin.avro" version "$avroPluginVersion"
+}
+
+group = 'com.slf4u0'
+version = "$appVersion"
+sourceCompatibility = "$javaLanguageVersion"
+description = 'events-collector-service'
+
+repositories {
+    mavenCentral()
+    maven {
+        url 'https://packages.confluent.io/maven/'
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    implementation 'org.springframework.kafka:spring-kafka'
+    implementation "io.confluent:kafka-avro-serializer:${kafkaAvroSerializerVersion}"
+    implementation "org.apache.avro:avro:${avroVersion}"
+
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    implementation "com.clickhouse:clickhouse-jdbc:${clickhouseJdbcVersion}"
+
+    implementation "io.micrometer:micrometer-registry-prometheus:${micrometerRegistryPrometheusVersion}"
+    implementation "io.opentelemetry.instrumentation:opentelemetry-spring-boot-autoconfigure:${opentelemetrySpringBootVersion}"
+
+    runtimeOnly "net.logstash.logback:logstash-logback-encoder:${logstashEncoderVersion}"
+
+    testImplementation "org.springframework.boot:spring-boot-starter-test"
+    testImplementation "org.junit.jupiter:junit-jupiter:${junitJupiterVersion}"
+    testImplementation "org.springframework.kafka:spring-kafka-test"
+
+    testImplementation "org.testcontainers:junit-jupiter:${testcontainersVersion}"
+    testImplementation "org.testcontainers:kafka:${testcontainersVersion}"
+    testImplementation "org.testcontainers:clickhouse:${testcontainersVersion}"
+    testImplementation "org.testcontainers:redis:${testcontainersVersion}"
+
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    finalizedBy jacocoTestReport
+}
+
+apply plugin: 'jacoco'
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+avro {
+    createSetters = true
+    fieldVisibility = 'PRIVATE'
+//    source("src/main/avro")
+//    outputDir = file("build/generated-main-avro-java")
+}
+
+//sourceSets {
+//    main {
+//        java {
+//            srcDirs += ["build/generated-main-avro-java"]
+//        }
+//    }
+//}
