@@ -38,14 +38,19 @@ spring:
     endpoint:
       health:
         show-details: always
+      prometheus:
+        enabled: true
+      tracing:
+        enabled: true
+        sampling:
+          probability: 1.0
+        otlp:
+          endpoint: http://alloy:4318
+          protocol: http/protobuf
     metrics:
       export:
         prometheus:
           enabled: true
-
-  logging:
-    pattern:
-      console: "%clr(%d{HH:mm:ss.SSS}) %clr(%5p) %clr(${PID:- }) %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n"
 
 clickhouse:
   username: ${CLICKHOUSE_USER}

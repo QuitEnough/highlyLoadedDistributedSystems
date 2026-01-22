@@ -20,6 +20,7 @@ repositories {
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation "io.micrometer:micrometer-registry-prometheus"
 
     implementation 'org.springframework.kafka:spring-kafka'
     implementation "io.confluent:kafka-avro-serializer:${kafkaAvroSerializerVersion}"
@@ -29,8 +30,15 @@ dependencies {
 
     implementation "com.clickhouse:clickhouse-jdbc:${clickhouseJdbcVersion}"
 
-    implementation "io.micrometer:micrometer-registry-prometheus:${micrometerRegistryPrometheusVersion}"
-    implementation "io.opentelemetry.instrumentation:opentelemetry-spring-boot-autoconfigure:${opentelemetrySpringBootVersion}"
+//    implementation "io.opentelemetry:opentelemetry-exporter-otlp"
+//    implementation "io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter:$opentelemetrySpringBootVersion"
+
+//    implementation "io.opentelemetry:opentelemetry-exporter-otlp:1.49.0"
+//    implementation "io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter:2.6.0"
+
+    implementation "io.micrometer:micrometer-tracing-bridge-otel"
+    implementation "io.opentelemetry:opentelemetry-exporter-otlp"
+    implementation "io.micrometer:micrometer-registry-prometheus"
 
     runtimeOnly "net.logstash.logback:logstash-logback-encoder:${logstashEncoderVersion}"
 
@@ -38,10 +46,10 @@ dependencies {
     testImplementation "org.junit.jupiter:junit-jupiter:${junitJupiterVersion}"
     testImplementation "org.springframework.kafka:spring-kafka-test"
 
+    testImplementation "org.testcontainers:testcontainers:${testcontainersVersion}"
     testImplementation "org.testcontainers:junit-jupiter:${testcontainersVersion}"
     testImplementation "org.testcontainers:kafka:${testcontainersVersion}"
     testImplementation "org.testcontainers:clickhouse:${testcontainersVersion}"
-    testImplementation "org.testcontainers:redis:${testcontainersVersion}"
 
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
@@ -64,14 +72,4 @@ jacocoTestReport {
 avro {
     createSetters = true
     fieldVisibility = 'PRIVATE'
-//    source("src/main/avro")
-//    outputDir = file("build/generated-main-avro-java")
 }
-
-//sourceSets {
-//    main {
-//        java {
-//            srcDirs += ["build/generated-main-avro-java"]
-//        }
-//    }
-//}
