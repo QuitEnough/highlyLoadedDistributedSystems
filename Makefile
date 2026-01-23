@@ -8,7 +8,6 @@ KEYCLOAK_INTERNAL_URL = http://keycloak:8080
 
 INFRA_SERVICES ?= \
 	postgres \
-	zookeeper \
 	kafka \
 	schema-registry \
 	redis \
@@ -22,7 +21,9 @@ INFRA_SERVICES ?= \
 	tempo \
 	alloy \
 	postgres-exporter \
-	kafka-exporter
+	keycloak-postgres-exporter \
+	kafka-exporter \
+    redis-exporter
 
 .PHONY: all up start stop clean logs ps reset infra infra-logs infra-stop rebuild
 

@@ -47,19 +47,6 @@ loki.source.docker "containers" {
   forward_to    = [loki.write.local.receiver]
 }
 
-otelcol.receiver.otlp "default" {
-  grpc {
-    endpoint = "0.0.0.0:4317"
-  }
-  http {
-    endpoint = "0.0.0.0:4318"
-  }
-  output {
-    traces = [otelcol.exporter.otlp.tempo.input]
-    metrics = [otelcol.exporter.prometheus.default.input]
-  }
-}
-
 otelcol.exporter.otlp "tempo" {
   client {
     endpoint = "tempo:4317"
@@ -69,6 +56,47 @@ otelcol.exporter.otlp "tempo" {
   }
 }
 
-otelcol.exporter.prometheus "default" {
-  forward_to = []
+prometheus.exporter.otlp "from_otlp" {
+  // Этот exporter слушает OTLP и экспортирует в формате Prometheus
+}
+
+prometheus.remote_write "prometheus" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}
+
+otelcol.receiver.otlp "default" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+  output {
+    traces = [otelcol.exporter.otlp.tempo.input]
+    metrics = [prometheus.exporter.otlp.from_otlp.input]
+  }
+}
+
+prometheus.scrape "exporters" {
+  targets = [
+    {__address__ = "postgres-exporter:9187"},
+    {__address__ = "keycloak-postgres-exporter:9187"},
+    {__address__ = "kafka-exporter:9308"},
+    {__address__ = "redis-exporter:6379"},
+    {__address__ = "keycloak:9000"},
+    {__address__ = "grafana:3000"},
+    {__address__ = "schema-registry:8081"},
+  ]
+
+  scrape_interval = "15s"
+  metrics_path    = "/metrics"
+
+  forward_to = [prometheus.remote_write.prometheus.receiver]
+}
+
+prometheus.relabel "otlp_to_remote_write" {
+  targets = prometheus.exporter.otlp.from_otlp.targets
+  forward_to = [prometheus.remote_write.prometheus.receiver]
 }

@@ -1,6 +1,6 @@
 FROM gradle:8.14.0-jdk24 AS builder
 WORKDIR /app
-COPY --chown=gradle:gradle . .
+COPY services/events-collector-service/ ./
 RUN gradle clean build -x test --no-daemon
 
 FROM eclipse-temurin:24-jdk-alpine

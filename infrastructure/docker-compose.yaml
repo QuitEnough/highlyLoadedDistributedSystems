@@ -76,6 +76,17 @@ services:
       timeout: 3s
       retries: 5
 
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.63.0
+    container_name: redis-exporter
+    ports:
+      - "${REDIS_EXPORTER_PORT}:9121"
+    environment:
+      REDIS_ADDR: redis://:${REDIS_PASSWORD}@redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
   keycloak-postgres:
     image: postgres:16-alpine
     container_name: keycloak-postgres
@@ -258,8 +269,6 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-      schema-registry:
-        condition: service_healthy
     command: |
       bash -c "
         kafka-topics --create --bootstrap-server kafka:29092 --topic events --partitions 3 --replication-factor 1 &&
@@ -332,6 +341,25 @@ services:
       - --server.http.listen-addr=0.0.0.0:9080
       - --storage.path=/var/lib/alloy/data
       - /etc/alloy/config.alloy
+    depends_on:
+      loki:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      postgres-exporter:
+        condition: service_started
+      keycloak-postgres-exporter:
+        condition: service_started
+      kafka-exporter:
+        condition: service_started
+      redis-exporter:
+        condition: service_started
     healthcheck:
       test: "ps aux | grep alloy | grep -v grep"
       interval: 10s
