@@ -1,89 +1,146 @@
-Привет, Яна!
+# Домашняя работа №1: Настройка окружения проекта
+
+## 📋 Задание
+**Цель:** Подготовить архитектурное описание и инженерную среду, на которой в дальнейшем будет строиться распределённая микросервисная система.
+
+### Что нужно было сделать:
+
+1. **Создать структуру репозитория:**
+```
+iot-platform-<group>/name
+├── diagrams/ # C4-диаграммы
+│ ├── context.puml
+│ └── containers.puml
+├── infrastructure/ # Инфраструктура Docker
+│ └── docker-compose.yaml
+├── README.md
+├── Makefile
+└── .env # Переменные окружения
+```
+
+
+2. **Нарисовать архитектуру в формате C4 (PlantUML):**
+    - `context.puml` — системный контекст
+    - `containers.puml` — уровень контейнеров
+    - Использовать `!includeurl` из C4-PlantUML
+    - Показать Kafka, Redis, PostgreSQL, Clickhouse, MinIO, Keycloak, Camunda как инфраструктурные блоки
+
+3. **Подготовить `docker-compose.yaml`:**
+    - Все необходимые сервисы (Postgres, Redis, ClickHouse, Kafka, Schema Registry, MinIO, Keycloak, Camunda, Grafana+Prometheus+Tempo+Loki+Alloy)
+    - Добавить healthcheck-и, порты, volume'ы, `depends_on`
+    - Создать `.env` для настройки портов, логинов, паролей
+
+4. **Создать `Makefile`** для быстрого запуска инфраструктуры
+
+5. **Обновить `README.md`** с инструкциями по запуску
+
+---
+
+## 🗣️ **Мои комментарии:**
+
+### Первая версия:
+**Добрый день!**
+
+Выполнила первое дз:
+- нарисована архитектура в формате C4 (PlantUML) двух первых уровней,
+- подготовлен "docker-compose.yaml",
+- создан ".env" для настройки портов, логинов, паролей,
+- присутствует Makefile, который позволяет быстро запустить всю инфраструктуру,
+- обновлен "README.md" с описанием проекта и "быстрым стартом",
+- добавлены дашборды Grafana для Kafka и PostgreSQL.
+
+В ходе выполнения до первого коммита не было функции создать новую ветку. В процессе забыла и закоммитила в main. Уже после создала ветку для merge request-а. Прошу понять и простить)
+
+**Ссылка на MR:** https://gitlab.proselyte.net/ourcode-iot-quebec/slf4u0/-/merge_requests/1
+
+---
+
+## 👨‍🏫 **Ревью от преподавателя:**
+
+**Привет, Яна!**
+
 Самое главное - по диаграммам - мы отображаем только ФАКТИЧЕСКОЕ СОСТОЯНИЕ - с loki, camunda, clickhouse и т.д.
 Сейчас у тебя там только копия того, что было в материалах для изучения.
 
-Что хорошо
+### ✅ **Что хорошо:**
 
-Репозиторий содержит все ключевые артефакты для Модуля 1: диаграммы C4, docker-compose, Makefile, README и .env.example. (README.md:42–60; diagrams/context.puml:1–24; diagrams/containers.puml:1–53; infrastructure/docker-compose.yaml:1–334; Makefile:1–109; .env.example:1–59)
+1. **Репозиторий содержит все ключевые артефакты** для Модуля 1: диаграммы C4, docker-compose, Makefile, README и .env.example.
 
-Context-диаграмма подключает C4-PlantUML через !includeurl и показывает акторов/внешние системы (Keycloak, Alloy, Grafana) и основные связи. (diagrams/context.puml:1–23)
+2. **Context-диаграмма** подключает C4-PlantUML через `!includeurl` и показывает акторов/внешние системы (Keycloak, Alloy, Grafana) и основные связи.
 
-Docker Compose поднимает требуемый минимум инфраструктуры: Postgres, Kafka, Schema Registry, Redis, MinIO, Keycloak, Camunda, ClickHouse, Prometheus, Grafana, Loki, Tempo, Alloy + exporters. (infrastructure/docker-compose.yaml:5–324)
+3. **Docker Compose** поднимает требуемый минимум инфраструктуры: Postgres, Kafka, Schema Registry, Redis, MinIO, Keycloak, Camunda, ClickHouse, Prometheus, Grafana, Loki, Tempo, Alloy + exporters.
 
-Kafka настроен с отдельным internal listener (29092) и external listener (9092) + advertised listeners, что снижает боль подключения клиентов. (infrastructure/docker-compose.yaml:164–191)
+4. **Kafka** настроен с отдельным internal listener (29092) и external listener (9092) + advertised listeners, что снижает боль подключения клиентов.
 
-Есть provisioning Grafana (datasources + dashboards provider) и два дашборда (Kafka и Postgres) как артефакты сдачи. (infrastructure/grafana/provisioning/datasources/datasources.yaml:1–20; infrastructure/grafana/provisioning/dashboards/dashboards.yml:1–10; infrastructure/grafana/dashboards/kafka-overview.json:1–80; infrastructure/grafana/dashboards/postgres-overview.json:1–42)
+5. **Есть provisioning Grafana** (datasources + dashboards provider) и два дашборда (Kafka и Postgres) как артефакты сдачи.
 
-Prometheus уже настроен на scrape Kafka Exporter и Postgres Exporter, а также на Keycloak/Grafana/Loki/Tempo/Alloy. (infrastructure/prometheus/prometheus.yml:1–44)
+6. **Prometheus** уже настроен на scrape Kafka Exporter и Postgres Exporter, а также на Keycloak/Grafana/Loki/Tempo/Alloy.
 
-Что нужно исправить
+### ❌ **Что нужно исправить:**
 
-BLOCKER
+#### 🔴 **BLOCKER:**
 
-BLOCKER-1
+**BLOCKER-1**
+- **Где:** `infrastructure/docker-compose.yaml:95`
+- **Проблема:** bind-mount для импорта realm в Keycloak указывает на `./infrastructure/keycloak/realm-config.json`, но compose-файл лежит в `infrastructure/`, значит путь резолвится как `infrastructure/infrastructure/keycloak/...` и файла там нет.
+- **Риск:** Keycloak поднимется без требуемого realm/клиентов/ролей.
 
-Где: infrastructure/docker-compose.yaml:95
+**BLOCKER-2**
+- **Где:** `diagrams/containers.puml:2, 15–17, 19–25`
+- **Проблема:** контейнерная диаграмма не соответствует требованиям задания:
+    - Подключение C4-PlantUML через `!include` вместо `!includeurl`
+    - Event Service "читает события из Cassandra", хотя используется ClickHouse
+    - Отсутствуют обязательные инфраструктурные блоки/связи для Avro-контрактов и observability
+    - Заложены два PostgreSQL (Devices/Commands), которых нет в docker-compose
+- **Риск:** контейнерная C4-диаграмма не засчитывается.
 
-Почему это проблема: bind-mount для импорта realm в Keycloak указывает на ./infrastructure/keycloak/realm-config.json, но compose-файл лежит в infrastructure/, значит путь резолвится как infrastructure/infrastructure/keycloak/... и файла там нет. В лучшем случае импорт realm не произойдет, в худшем Docker создаст директорию вместо файла и Keycloak получит некорректный mount.
+#### 🟡 **HIGH / MEDIUM / LOW:**
 
-Риск, если не исправлять: Keycloak поднимется без требуемого realm/клиентов/ролей (или не поднимется корректно), а проверка security части окружения станет невозможной.
+**HIGH-1**
+- **Где:** `README.md:94–98`
+- **Проблема:** команда "Ручной запуск" написана неверно — отсутствует `up` и неверный порядок флагов.
+- **Риск:** не смогу запустить окружение по README.
 
-BLOCKER-2
+**MEDIUM-1**
+- **Где:** `infrastructure/prometheus/prometheus.yml:45–48`
+- **Проблема:** scrape job `person-postgres` указывает на `person-postgres-exporter:9187`, но такого сервиса нет.
+- **Риск:** Prometheus Targets будут "красными".
 
-Где: diagrams/containers.puml:2, 15–17, 19–25
+**MEDIUM-2**
+- **Где:** `infrastructure/docker-compose.yaml:43–47`
+- **Проблема:** healthcheck Redis задан некорректно для `CMD-SHELL`.
+- **Риск:** Redis может показываться как unhealthy.
 
-Почему это проблема: контейнерная диаграмма не соответствует требованиям задания и частично не соответствует реальной инфраструктуре.
+**MEDIUM-3**
+- **Где:** `infrastructure/docker-compose.yaml:24, 106, 125, 226, 271`
+- **Проблема:** используется `:latest` для ключевых компонентов.
+- **Риск:** ломает воспроизводимость.
 
-Подключение C4-PlantUML сделано через !include с URL (diagrams/containers.puml:2), что часто не рендерится в PlantUML без !includeurl.
+**LOW-1**
+- **Где:** `infrastructure/docker-compose.yaml:332–334`
+- **Проблема:** volume `schema_registry_data` объявлен, но не используется.
+- **Риск:** мусор в конфиге.
 
-В диаграмме Event Service “читает события из Cassandra” (diagrams/containers.puml:15), хотя по заданию и docker-compose используется ClickHouse (infrastructure/docker-compose.yaml:144–163).
+### 📝 **Итог:**
+**На доработку.** Есть блокирующие проблемы: некорректный mount realm-конфига Keycloak и контейнерная C4-диаграмма не соответствует требованиям задания.
 
-На диаграмме отсутствуют обязательные инфраструктурные блоки/связи для Avro-контрактов и observability (Schema Registry/Prometheus/Grafana/Loki/Tempo как часть модели контейнеров), а также заложены два PostgreSQL (Devices/Commands), которых нет в docker-compose. (diagrams/containers.puml:21–22 vs infrastructure/docker-compose.yaml:5–22, 49–65)
+---
 
-Риск, если не исправлять: контейнерная C4-диаграмма не засчитывается и “архитектурное описание” формально проваливает модуль.
+## 🗣️ **Мои комментарии после исправлений:**
 
-HIGH / MEDIUM / LOW
+**Евгений, добрый вечер!**
 
-HIGH-1
+Спасибо большое за подробное описание правок. Вот исправленная версия: https://gitlab.proselyte.net/ourcode-iot-quebec/slf4u0/-/merge_requests/1
 
-Где: README.md:94–98
+---
 
-Почему проблема: команда “Ручной запуск” написана неверно — отсутствует up и неверный порядок флагов docker compose ... -d). Это неработающий Quick Start сценарий для проверяющего/студента.
+## 👨‍🏫 **Финальное ревью от преподавателя:**
 
-Риск: не смогу запустить окружение по README, даже если compose корректный.
+**Привет, Яна!**
 
-MEDIUM-1
+Все отлично, закрываем модуль. ✅
 
-Где: infrastructure/prometheus/prometheus.yml:45–48
+---
 
-Почему проблема: scrape job person-postgres указывает на person-postgres-exporter:9187, но такого сервиса в docker-compose нет. Это явный “хвост” копипаста и гарантированный DOWN target.
-
-Риск: Prometheus Targets будут “красными” без причины, ухудшая доверие к наблюдаемости и усложняя проверку.
-
-MEDIUM-2
-
-Где: infrastructure/docker-compose.yaml:43–47
-
-Почему проблема: healthcheck Redis задан как ["CMD-SHELL", "redis-cli", "-a", "...", "ping"]. Для CMD-SHELL ожидается одна строка-команда (обычно второй элемент массива), а не разнесенные аргументы; в зависимости от реализации Docker это может работать некорректно.
-
-Риск: Redis может показываться как unhealthy без реальной проблемы, а требование “healthcheck-и” формально не выполнено.
-
-MEDIUM-3
-
-Где: infrastructure/docker-compose.yaml:24, 106, 125, 226, 271
-
-Почему проблема: используется :latest для ключевых компонентов (postgres-exporter, minio, camunda, prometheus, alloy). Это ломает воспроизводимость: одинаковое ДЗ сегодня и через неделю может “внезапно” перестать подниматься.
-
-Риск: нестабильность окружения и невалидируемость результата (особенно на проверке).
-
-LOW-1
-
-Где: infrastructure/docker-compose.yaml:332–334
-
-Почему проблема: volume schema_registry_data объявлен, но нигде не используется сервисом schema-registry.
-
-Риск: мусор в конфиге, снижает качество и усложняет сопровождение.
-
-Итог
-
-На доработку. Есть блокирующие проблемы: некорректный mount realm-конфига Keycloak (Keycloak не гарантированно поднимется в нужной конфигурации). Дополнительно контейнерная C4-диаграмма не соответствует требованиям задания (include не по стандарту, Cassandra вместо ClickHouse, отсутствуют обязательные инфраструктурные блоки/связи и расхождение с compose).
+## 📊 **Статус задания:**
+✅ **ВЫПОЛНЕНО И ПРИНЯТО**
