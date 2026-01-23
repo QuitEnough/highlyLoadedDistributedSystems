@@ -1,0 +1,56 @@
+@startuml
+title Events Collector: Обработка события из Kafka
+
+actor "Kafka\n(топик events)" as KafkaIn
+participant "EventsCollector\n(@KafkaListener)" as EC
+database "Redis" as R
+database "ClickHouse\n(device_events, device_outbox)" as CH
+participant "OutboxProcessor\n(@Scheduled)" as OP
+actor "Kafka\n(топик devices)" as KafkaOut
+
+== 1. Успешная обработка входящего события ==
+KafkaIn -> EC : DeviceEvent {eventId, deviceId, ...}
+EC -> CH : INSERT INTO device_events(...)
+EC -> R : SADD devices:seen <deviceId> EX 3600
+alt deviceId НОВЫЙ (SADD = 1)
+    EC -> CH : INSERT INTO device_outbox(deviceId, status=0)
+else deviceId ДУБЛЬ (SADD = 0)
+    note right: Пропускаем создание outbox-записи
+end
+EC --> KafkaIn : commit offset
+
+== 2. Асинхронная публикация через Outbox (CRON) ==
+loop периодически
+    OP -> R : SET outbox:lock "inst-1" NX PX 5000
+    alt lock получен
+        OP -> CH : SELECT * FROM device_outbox WHERE status=0 LIMIT 100
+        loop для каждой записи
+            OP -> R : SADD published:devices <deviceId> EX 3600
+            alt deviceId НОВЫЙ (SADD = 1)
+                OP -> KafkaOut : produce(deviceId)
+                OP -> CH : UPDATE device_outbox SET status=1, sent_at=now()
+            else уже публиковался
+                note right: Идемпотентность: пропускаем
+            end
+        end
+        OP -> R : DEL outbox:lock
+    else lock не получен (другой инстанс работает)
+        OP --> OP : пропуск итерации
+    end
+end
+
+== 3. Observability ==
+EC -> "Grafana Alloy" : metrics, logs, traces
+"Grafana Alloy" -> "Prometheus\n/Loki\n/Tempo" : агрегация и хранение
+
+== 4. Ошибка при обработке (например, ClickHouse недоступен) ==
+KafkaIn -> EC : DeviceEvent {eventId, ...}
+EC -> CH : INSERT INTO device_events(...)
+note right: ОШИБКА: ClickHouse timeout
+...
+EC --> EC : выброс исключения
+note right: Spring Kafka DefaultErrorHandler:\n3 попытки с интервалом 100ms,\nзатем логгирование ошибки
+...
+EC --> KafkaIn : offset НЕ подтверждён
+note right: Kafka повторно доставит\nсообщение после ребаланса/рестарта
+@enduml

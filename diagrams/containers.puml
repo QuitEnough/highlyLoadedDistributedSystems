@@ -19,10 +19,10 @@ System_Boundary(iot_platform, "IoT Monitoring Platform") {
 
     Container(schema_registry, "Schema Registry", "Confluent Schema Registry", "Управление Avro-схемами")
 
-    Container(prometheus, "Prometheus", "Time Series DB", "Сохраняет метрики, опрашивает экспортеры")
+    Container(prometheus, "Prometheus", "Metrics Backend", "Хранит и анализирует метрики\n(получает только от Alloy)")
+    Container(loki, "Loki", "Logging Backend", "Хранит и анализирует логи\n(получает только от Alloy)")
+    Container(tempo, "Tempo", "Tracing Backend", "Хранит и анализирует трейсы\n(получает только от Alloy)")
     Container(grafana, "Grafana", "Dashboard UI", "Визуализация: метрики, логи, трейсы")
-    Container(loki, "Loki", "Log Aggregator", "Сохраняет структурированные логи")
-    Container(tempo, "Tempo", "Distributed Tracing", "Хранение трассировок")
     Container(alloy, "Grafana Alloy", "OpenTelemetry Collector", "Собирает метрики, логи и трейсы")
 
     Container(postgres_exporter, "Postgres Exporter", "Prometheus Exporter", "Читает статистику БД")
@@ -47,19 +47,15 @@ Rel(kafka, KL, "Потребление событий из топика 'events'
 Rel(KL, schema_registry, "Получение Avro-схемы", "HTTP REST")
 
 Rel(EC, redis, "Дедупликация device_id\nSADD devices:seen <id>\nTTL = 1h", "Redis Set + EXPIRE")
-
 Rel(EC, clickhouse, "Сохранение события в device_events\n(после дедупликации)\nCREATE TABLE ... ENGINE=MergeTree", "ClickHouse INSERT")
-
 Rel(EC, clickhouse, "Запись в device_outbox (status=NEW)\nпри первом появлении device_id", "Transactional Outbox")
 
 Rel(OP, redis, "Distributed lock:\nSET outbox:lock <id> NX PX 5000", "Redis SET NX PX")
-
 Rel(OP, clickhouse, "SELECT device_outbox WHERE status=0\nUPDATE status=SENT", "Outbox polling")
 Rel(OP, KP, "Публикация device_id", "Kafka Producer")
 Rel(KP, kafka, "Отправка в топик 'devices'", "Kafka produce")
 
 Rel(camunda, keycloak, "Аутентификация пользователей", "OIDC")
-
 Rel(camunda, postgres, "Хранение процессов", "JDBC")
 Rel(keycloak, keycloak_postgres, "Хранение пользователей", "JDBC")
 
@@ -67,6 +63,16 @@ Rel(postgres_exporter, postgres, "Подключение к БД", "PostgreSQL J
 Rel(keycloak_postgres_exporter, keycloak_postgres, "Подключение к БД", "PostgreSQL JDBC")
 Rel(kafka_exporter, kafka, "Подключение к Kafka", "Kafka client")
 Rel(redis_exporter, redis, "Читает Redis INFO")
+
+Rel(postgres_exporter, alloy, "Push /metrics", "HTTP")
+Rel(keycloak_postgres_exporter, alloy, "Push /metrics", "HTTP")
+Rel(kafka_exporter, alloy, "Push /metrics", "HTTP")
+Rel(redis_exporter, alloy, "Push /metrics", "HTTP")
+Rel(events_collector, alloy, "Метрики, логи, трейсы", "OpenTelemetry")
+
+Rel(alloy, prometheus, "Экспорт метрик", "Prometheus Remote Write")
+Rel(alloy, loki, "Экспорт логов", "Loki Push API")
+Rel(alloy, tempo, "Экспорт трейсов", "OTLP/gRPC")
 
 Rel(kafka, schema_registry, "Валидация схем при produce", "HTTP REST API")
 Rel(schema_registry, kafka, "Хранение схем в _schemas", "Kafka producer")
@@ -77,20 +83,6 @@ Note on link
   2. Consumer получает схему по ID
   3. Валидация на лету
 end note
-
-Rel(prometheus, postgres_exporter, "Scrape метрик PostgreSQL", "HTTP /metrics")
-Rel(prometheus, keycloak_postgres_exporter, "Scrape метрик Keycloak DB", "HTTP /metrics")
-Rel(prometheus, redis_exporter, "Scrape метрик Redis", "HTTP /metrics")
-Rel(prometheus, kafka_exporter, "Scrape метрик Kafka", "HTTP /metrics")
-Rel(prometheus, keycloak, "Scrape метрик Keycloak", "HTTP /metrics")
-Rel(prometheus, grafana, "Scrape метрик Grafana", "HTTP /metrics")
-Rel(prometheus, alloy, "Scrape метрик Alloy", "HTTP /metrics")
-Rel(prometheus, loki, "Scrape метрик Loki", "HTTP /metrics")
-Rel(prometheus, tempo, "Scrape метрик Tempo", "HTTP /metrics")
-Rel(prometheus, schema_registry, "Scrape метрик Schema Registry", "HTTP /metrics")
-
-Rel(alloy, loki, "Отправка логов", "Loki Push API")
-Rel(alloy, tempo, "Отправка трейсов", "OTLP/gRPC")
 
 Rel(grafana, prometheus, "Чтение метрик", "Prometheus datasource")
 Rel(grafana, loki, "Чтение логов", "Loki datasource")
