@@ -191,6 +191,7 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - clickhouse_log:/var/log/clickhouse-server
+      - ./databases/clickhouse:/docker-entrypoint-initdb.d
     environment:
       CLICKHOUSE_USER: ${CLICKHOUSE_USER}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
@@ -231,6 +232,26 @@ services:
       retries: 10
       start_period: 60s
 
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8070:8080"
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local
+      - KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_CLUSTERS_0_SCHEMAREGISTRY=http://schema-registry:8081
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   schema-registry:
     image: confluentinc/cp-schema-registry:7.5.0
     container_name: schema-registry
@@ -249,6 +270,29 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  schema-init:
+    image: alpine:3.23.2
+    container_name: schema-init
+    depends_on:
+      schema-registry:
+        condition: service_healthy
+    volumes:
+      - ../services/events-collector-service/src/main/avro:/schemas:ro
+    command: >
+      sh -c "
+        apk add --no-cache curl jq &&
+        echo 'Waiting for Schema Registry...' &&
+        sleep 10;
+        if [ ! -f /schemas/DeviceEvent.avsc ]; then
+          echo 'Error: /schemas/DeviceEvent.avsc not found';
+          exit 1;
+        fi;
+        SCHEMA_CONTENT=$(jq -Rs '.' /schemas/DeviceEvent.avsc);
+        PAYLOAD=\"{\\\"schema\\\": $$SCHEMA_CONTENT}\";
+        curl -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' -d \"$$PAYLOAD\" http://schema-registry:8081/subjects/events-value/versions;
+        echo 'Schema registration attempt finished'
+      "
 
   kafka-exporter:
     image: danielqsj/kafka-exporter:v1.7.0

@@ -1,9 +1,14 @@
 spring:
+  config:
+    activate:
+      on-profile: docker
   kafka:
     bootstrap-servers: kafka:29092
     consumer:
       properties:
         schema.registry.url: ${SCHEMA_REGISTRY_URL_DOCKER}
+    producer:
+      bootstrap-servers: kafka:29092
 
   data:
     redis:

@@ -23,7 +23,8 @@ INFRA_SERVICES ?= \
 	postgres-exporter \
 	keycloak-postgres-exporter \
 	kafka-exporter \
-    redis-exporter
+    redis-exporter \
+    schema-init
 
 .PHONY: all up start stop clean logs ps reset infra infra-logs infra-stop rebuild
 

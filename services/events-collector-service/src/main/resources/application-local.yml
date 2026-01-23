@@ -1,9 +1,14 @@
 spring:
   kafka:
+    config:
+      activate:
+        on-profile: local
     bootstrap-servers: localhost:9092
     consumer:
       properties:
         schema.registry.url: http://localhost:8081
+    producer:
+      bootstrap-servers: kafka:29092
 
   data:
     redis:

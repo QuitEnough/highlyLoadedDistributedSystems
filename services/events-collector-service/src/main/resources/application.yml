@@ -2,6 +2,9 @@ server:
   port: 8091
 
 spring:
+  config:
+    activate:
+      on-profile: default
   application:
     name: events-collector-service
 
@@ -10,6 +13,7 @@ spring:
       group-id: events-collector
       auto-offset-reset: earliest
       enable-auto-commit: false
+      max-poll-records: 1
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
     properties:
@@ -18,6 +22,13 @@ spring:
       ack-mode: record
       concurrency: 1
       poll-timeout: 10000
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: 1
+      retries: 3
+      batch-size: 16384
+      linger-ms: 5
 
   data:
     redis:
