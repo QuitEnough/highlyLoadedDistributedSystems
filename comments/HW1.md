@@ -33,7 +33,32 @@ iot-platform-<group>/name
 4. **Создать `Makefile`** для быстрого запуска инфраструктуры
 
 5. **Обновить `README.md`** с инструкциями по запуску
+   Обязательно укажите:
+```
+ cd infrastructure
+ docker-compose up -d
+```
 
+**Примеры URL:**
+
+- http://localhost:5432 — PostgreSQL
+- http://localhost:9000 — MinIO
+- http://localhost:9092 — Kafka
+- http://localhost:8080 — Keycloak
+- http://localhost:3000 — Grafana
+
+**Что сдать:**
+- Ссылка на GitLab-репозиторий
+- Обязательно:
+- ".puml"-файлы
+- "docker-compose.yaml"
+- Makefile
+- Добавьте дашборд Grafana для Kafka и PostgreSQL
+- Оформите Makefile или shell-скрипт для быстрого запуска
+- Пример С4 container диаграммы системы:
+
+![img.png](img.png)
+![img_1.png](img_1.png)
 ---
 
 ## 🗣️ **Мои комментарии:**
