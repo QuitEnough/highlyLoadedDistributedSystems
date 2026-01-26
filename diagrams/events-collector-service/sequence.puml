@@ -13,12 +13,7 @@ actor "Kafka\n(топик devices)" as KafkaOut
 KafkaIn -> EC : DeviceEvent {eventId, deviceId, ...}
 EC -> EPS : process(event)
 EPS -> CH : INSERT INTO device_events(...)
-EPS -> R : SADD devices:seen <deviceId> EX 3600
-alt deviceId НОВЫЙ (SADD = 1)
-    EPS -> CH : INSERT INTO device_outbox(deviceId, status=0)
-else deviceId ДУБЛЬ (SADD = 0)
-    note right: Пропускаем создание outbox-записи
-end
+EPS -> CH : INSERT INTO device_outbox(deviceId, status=0)
 EC --> KafkaIn : commit offset
 
 == 2. Асинхронная публикация через Outbox (CRON) ==
@@ -27,8 +22,13 @@ loop периодически
     alt lock получен
         OP -> CH : SELECT * FROM device_outbox WHERE status=0 LIMIT 100
         loop для каждой записи
-            OP -> KafkaOut : produce(deviceId)
-            OP -> CH : UPDATE device_outbox SET status=1, sent_at=now()
+            OP -> R : SADD published:devices <deviceId>
+            alt deviceId НОВЫЙ
+                OP -> KafkaOut : produce(deviceId)
+                OP -> CH : UPDATE device_outbox SET status=1, sent_at=now()
+            else уже публиковался
+                note right: Пропускаем
+            end
         end
         OP -> R : DEL outbox:lock
     else lock не получен (другой инстанс работает)
