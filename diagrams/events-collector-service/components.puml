@@ -10,9 +10,10 @@ Person(engineer, "Инженер", "DevOps-инженер")
 
 Container_Boundary(events_collector, "events-collector-service") {
     Component(EventsCollector, "EventsCollector", "Spring @KafkaListener", "Потребляет Avro-события из топика 'events'")
+    Component(EventProcessingService, "EventProcessingService", "Service", "Обрабатывает событие: дедупликация, запись")
     Component(DeviceEventRepository, "DeviceEventRepository", "ClickHouse JDBC", "Сохраняет события в device_events")
+    Component(OutboxRepository, "OutboxRepository", "ClickHouse JDBC", "Работает с device_outbox")
     Component(DeviceDeduplicator, "DeviceDeduplicator", "Spring Data Redis", "Проверяет deviceId через Redis Set")
-    Component(OutboxWriter, "OutboxWriter", "ClickHouse JDBC", "Создаёт запись в device_outbox при новом deviceId")
     Component(OutboxProcessor, "OutboxProcessor", "Spring @Scheduled", "CRON-задача с Redis-lock для публикации из outbox")
     Component(DeviceIdPublisher, "DeviceIdPublisher", "KafkaTemplate", "Публикует deviceId в топик 'devices'")
     Component(ObservabilityAdapter, "ObservabilityAdapter", "Micrometer + OpenTelemetry", "Экспорт в Grafana Alloy")
@@ -21,18 +22,20 @@ Container_Boundary(events_collector, "events-collector-service") {
 Rel(engineer, events_collector, "Мониторинг", "HTTP / Actuator")
 
 Rel(kafka, EventsCollector, "Потребление DeviceEvent из топика 'events'", "Kafka Consumer (Avro)")
+Rel(EventsCollector, EventProcessingService, "delegate(event)", "")
 
-Rel(EventsCollector, DeviceEventRepository, "Сохранить событие в device_events", "")
 Rel(EventsCollector, DeviceDeduplicator, "Проверить deviceId", "")
 Rel(DeviceDeduplicator, redis, "SADD devices:seen <deviceId>", "Redis")
-Rel(EventsCollector, OutboxWriter, "Если deviceId новый", "")
-Rel(OutboxWriter, clickhouse, "INSERT INTO device_outbox(status=0)", "ClickHouse")
+
+Rel(EventProcessingService, DeviceEventRepository, "Сохранить событие в device_events", "")
+Rel(EventProcessingService, OutboxRepository, "Если deviceId новый", "")
 
 Rel(OutboxProcessor, redis, "SET outbox:lock NX PX", "Redis distributed lock")
-Rel(OutboxProcessor, clickhouse, "SELECT * FROM device_outbox WHERE status=0", "ClickHouse")
+Rel(OutboxProcessor, OutboxRepository, "SELECT * FROM device_outbox WHERE status=0", "ClickHouse")
 Rel(OutboxProcessor, DeviceIdPublisher, "Для каждой записи", "")
+
+Rel(DeviceIdPublisher, OutboxRepository, "UPDATE device_outbox SET status=1", "ClickHouse")
 Rel(DeviceIdPublisher, kafka, "produce(deviceId) в топик 'devices'", "Kafka Producer")
-Rel(DeviceIdPublisher, clickhouse, "UPDATE device_outbox SET status=1", "ClickHouse")
 
 Rel(events_collector, alloy, "Метрики, логи, трейсы", "OpenTelemetry / Micrometer")
 

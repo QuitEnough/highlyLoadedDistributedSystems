@@ -16,7 +16,6 @@ System_Boundary(iot_platform, "IoT Monitoring Platform") {
 
     Container(keycloak, "Keycloak", "Identity Server", "SSO/OAuth2 сервер")
     Container(camunda, "Camunda", "BPM Engine", "Движок workflow-процессов")
-
     Container(schema_registry, "Schema Registry", "Confluent Schema Registry", "Управление Avro-схемами")
 
     Container(prometheus, "Prometheus", "Metrics Backend", "Хранит и анализирует метрики\n(получает только от Alloy)")
@@ -30,12 +29,7 @@ System_Boundary(iot_platform, "IoT Monitoring Platform") {
     Container(kafka_exporter, "Kafka Exporter", "Prometheus Exporter", "Собирает метрики из Kafka")
     Container(redis_exporter, "Redis Exporter", "Prometheus Exporter", "Преобразует Redis INFO в /metrics")
 
-    Container(events_collector, "events-collector-service", "Spring Boot 3.5", "Сбор и обработка событий из Kafka") {
-            [KafkaListener] as KL
-            [EventCollector] as EC
-            [OutboxProcessor] as OP
-            [KafkaProducer] as KP
-    }
+    Container(events_collector, "events-collector-service", "Spring Boot 3.5", "Сбор и обработка событий из Kafka")
 }
 
 Rel(iot_device, kafka, "Телеметрия (Avro)", "Kafka/Avro [ПЛАНИРУЕТСЯ]")
@@ -43,46 +37,27 @@ Rel(engineer, grafana, "Мониторинг", "HTTP (дашборды)")
 Rel(engineer, keycloak, "Вход в систему", "Keycloak (OIDC)")
 Rel(engineer, camunda, "Мониторинг процессов", "HTTP (Camunda Cockpit)")
 
-Rel(kafka, KL, "Потребление событий из топика 'events'", "Kafka Consumer (Avro)")
-Rel(KL, schema_registry, "Получение Avro-схемы", "HTTP REST")
-
-Rel(EC, redis, "Дедупликация device_id\nSADD devices:seen <id>\nTTL = 1h", "Redis Set + EXPIRE")
-Rel(EC, clickhouse, "Сохранение события в device_events\n(после дедупликации)\nCREATE TABLE ... ENGINE=MergeTree", "ClickHouse INSERT")
-Rel(EC, clickhouse, "Запись в device_outbox (status=NEW)\nпри первом появлении device_id", "Transactional Outbox")
-
-Rel(OP, redis, "Distributed lock:\nSET outbox:lock <id> NX PX 5000", "Redis SET NX PX")
-Rel(OP, clickhouse, "SELECT device_outbox WHERE status=0\nUPDATE status=SENT", "Outbox polling")
-Rel(OP, KP, "Публикация device_id", "Kafka Producer")
-Rel(KP, kafka, "Отправка в топик 'devices'", "Kafka produce")
+Rel(kafka, events_collector, "Потребление событий из топика 'events'", "Kafka Consumer (Avro)")
+Rel(events_collector, schema_registry, "Получение Avro-схемы", "HTTP REST")
+Rel(events_collector, clickhouse, "INSERT device_events + device_outbox", "ClickHouse")
+Rel(events_collector, redis, "Дедупликация device_id\nSADD devices:seen <id>\nTTL = 1h", "Redis Set + EXPIRE")
+Rel(events_collector, alloy, "Метрики, логи, трейсы", "OpenTelemetry")
+Rel(events_collector, kafka, "Отправка в топик 'devices'", "Kafka produce")
 
 Rel(camunda, keycloak, "Аутентификация пользователей", "OIDC")
 Rel(camunda, postgres, "Хранение процессов", "JDBC")
 Rel(keycloak, keycloak_postgres, "Хранение пользователей", "JDBC")
 
-Rel(postgres_exporter, postgres, "Подключение к БД", "PostgreSQL JDBC")
-Rel(keycloak_postgres_exporter, keycloak_postgres, "Подключение к БД", "PostgreSQL JDBC")
-Rel(kafka_exporter, kafka, "Подключение к Kafka", "Kafka client")
-Rel(redis_exporter, redis, "Читает Redis INFO")
-
 Rel(postgres_exporter, alloy, "Push /metrics", "HTTP")
 Rel(keycloak_postgres_exporter, alloy, "Push /metrics", "HTTP")
 Rel(kafka_exporter, alloy, "Push /metrics", "HTTP")
 Rel(redis_exporter, alloy, "Push /metrics", "HTTP")
-Rel(events_collector, alloy, "Метрики, логи, трейсы", "OpenTelemetry")
 
 Rel(alloy, prometheus, "Экспорт метрик", "Prometheus Remote Write")
 Rel(alloy, loki, "Экспорт логов", "Loki Push API")
 Rel(alloy, tempo, "Экспорт трейсов", "OTLP/gRPC")
 
 Rel(kafka, schema_registry, "Валидация схем при produce", "HTTP REST API")
-Rel(schema_registry, kafka, "Хранение схем в _schemas", "Kafka producer")
-Rel_D(schema_registry, kafka, "Чтение схем при consume", "Kafka consumer + HTTP")
-Note on link
-  **Avro workflow:**
-  1. Producer регистрирует схему
-  2. Consumer получает схему по ID
-  3. Валидация на лету
-end note
 
 Rel(grafana, prometheus, "Чтение метрик", "Prometheus datasource")
 Rel(grafana, loki, "Чтение логов", "Loki datasource")

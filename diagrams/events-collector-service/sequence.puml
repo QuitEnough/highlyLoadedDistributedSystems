@@ -3,6 +3,7 @@ title Events Collector: Обработка события из Kafka
 
 actor "Kafka\n(топик events)" as KafkaIn
 participant "EventsCollector\n(@KafkaListener)" as EC
+participant "EventProcessingService" as EPS
 database "Redis" as R
 database "ClickHouse\n(device_events, device_outbox)" as CH
 participant "OutboxProcessor\n(@Scheduled)" as OP
@@ -10,10 +11,11 @@ actor "Kafka\n(топик devices)" as KafkaOut
 
 == 1. Успешная обработка входящего события ==
 KafkaIn -> EC : DeviceEvent {eventId, deviceId, ...}
-EC -> CH : INSERT INTO device_events(...)
-EC -> R : SADD devices:seen <deviceId> EX 3600
+EC -> EPS : process(event)
+EPS -> CH : INSERT INTO device_events(...)
+EPS -> R : SADD devices:seen <deviceId> EX 3600
 alt deviceId НОВЫЙ (SADD = 1)
-    EC -> CH : INSERT INTO device_outbox(deviceId, status=0)
+    EPS -> CH : INSERT INTO device_outbox(deviceId, status=0)
 else deviceId ДУБЛЬ (SADD = 0)
     note right: Пропускаем создание outbox-записи
 end
@@ -25,13 +27,8 @@ loop периодически
     alt lock получен
         OP -> CH : SELECT * FROM device_outbox WHERE status=0 LIMIT 100
         loop для каждой записи
-            OP -> R : SADD published:devices <deviceId> EX 3600
-            alt deviceId НОВЫЙ (SADD = 1)
-                OP -> KafkaOut : produce(deviceId)
-                OP -> CH : UPDATE device_outbox SET status=1, sent_at=now()
-            else уже публиковался
-                note right: Идемпотентность: пропускаем
-            end
+            OP -> KafkaOut : produce(deviceId)
+            OP -> CH : UPDATE device_outbox SET status=1, sent_at=now()
         end
         OP -> R : DEL outbox:lock
     else lock не получен (другой инстанс работает)
