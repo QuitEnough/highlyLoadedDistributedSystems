@@ -334,3 +334,37 @@ C -> R : release lock
 **Итог:**
 
 Требуется доработка. **ДИАГРАММЫ НЕ ЗАСЧИТАНЫ.**
+
+---
+
+## 🗣️ **Мои комментарии:**
+
+### Вторая версия версия:
+Привет!
+
+ДЗ v1.1: https://gitlab.proselyte.net/ourcode-iot-quebec/slf4u0/-/merge_requests/2/diffs?commit_id=054698a7ca49e5206e8783368594f6884b2ec1a2
+
+* внесла правки в контейнерную и sequence диаграммы,
+* добавила компонентную.
+
+
+https://gitlab.proselyte.net/ourcode-iot-quebec/slf4u0/-/merge_requests/2
+добавила еще один коммит (навела красоту в коде к компонентной диаграмме)
+
+---
+
+## 👨‍🏫 **Ревью от преподавателя:**
+
+**Привет, Яна!**
+1. Не миксуй уровни на одной диаграмме. Весь ECS - это просто один квадратик на уровне контейнеров. 1 инстанс.
+   https://gitlab.proselyte.net/ourcode-iot-quebec/slf4u0/-/blob/054698a7ca49e5206e8783368594f6884b2ec1a2/diagrams/containers.puml 
+2. У тебя на компонетной сам листенер много на себя берет. Пусть он просто вызывает отдлеьный класс, который и будет всю логику под себя брать, а сам листенер - только слушает и вызывает этот класс:
+   https://gitlab.proselyte.net/ourcode-iot-quebec/slf4u0/-/blob/054698a7ca49e5206e8783368594f6884b2ec1a2/diagrams/events-collector-service/components.puml
+3. В БД должен ходить репо - DeviceIdPublisher просто вызовет его методы. Всезде SOLID --> S --> SRP:
+   https://gitlab.proselyte.net/ourcode-iot-quebec/slf4u0/-/blob/054698a7ca49e5206e8783368594f6884b2ec1a2/diagrams/events-collector-service/components.puml
+4. По процессу обработки - упрости процесс четния. Просто при чтении из кафки получили запись, сохранили в 2 таблицы и сдвинули оффсет. Все, без магии. Все остальное скидываем уже на процесс outbox processing:
+   https://gitlab.proselyte.net/ourcode-iot-quebec/slf4u0/-/blob/054698a7ca49e5206e8783368594f6884b2ec1a2/diagrams/events-collector-service/sequence.puml
+5. По процессе outbox processing - не обязательно, но подумай как сделать его масштабируемым. Сейчас только один инстанс будет делать все. В идеале - 10 инстансов есть, все 10 и читюат все записи не мешая друг другу.
+   https://gitlab.proselyte.net/ourcode-iot-quebec/slf4u0/-/blob/054698a7ca49e5206e8783368594f6884b2ec1a2/diagrams/events-collector-service/sequence.puml 
+6. И лично от меня: Grafana ALLOY должен отвечать за все по факту. Т.е. не Prometheus ходит по всем, а сам Alloy пушит данные в Prometheus
+   https://grafana.com/docs/alloy/latest/tutorials/send-metrics-to-prometheus/ 
