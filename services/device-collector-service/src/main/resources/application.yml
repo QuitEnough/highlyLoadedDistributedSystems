@@ -1,0 +1,66 @@
+server:
+  port: 8091
+
+spring:
+  config:
+    activate:
+      on-profile: default
+  application:
+    name: events-collector-service
+
+  kafka:
+    consumer:
+      group-id: events-collector
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 1
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+    properties:
+      specific.avro.reader: true
+    listener:
+      ack-mode: record
+      concurrency: 1
+      poll-timeout: 10000
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: 1
+      retries: 3
+      batch-size: 16384
+      linger-ms: 5
+
+  data:
+    redis:
+      password: ${REDIS_PASSWORD}
+      repositories:
+        enabled: false
+
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+  management:
+    server:
+      port: 8091
+    endpoints:
+      web:
+        exposure:
+          include: health,metrics
+    endpoint:
+      health:
+        show-details: always
+    tracing:
+      sampling:
+        probability: 1.0
+      otlp:
+        endpoint: http://alloy:4318
+        protocol: http/protobuf
+    otlp:
+      metrics:
+        export:
+          url: http://alloy:4318/v1/metrics
+          step: 1m
+
+clickhouse:
+  username: ${CLICKHOUSE_USER}
+  password: ${CLICKHOUSE_PASSWORD}

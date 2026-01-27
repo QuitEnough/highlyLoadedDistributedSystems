@@ -1,0 +1,66 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version "$springBootVersion"
+    id 'io.spring.dependency-management' version "$springDependencyManagementVersion"
+    id "com.github.davidmc24.gradle.plugin.avro" version "$avroPluginVersion"
+}
+
+group = 'com.slf4u0'
+version = "$appVersion"
+sourceCompatibility = "$javaLanguageVersion"
+
+repositories {
+    mavenCentral()
+    maven {
+        url = 'https://packages.confluent.io/maven/'
+    }
+}
+
+dependencies {
+    implementation "org.springframework.boot:spring-boot-starter-web"
+    implementation "org.springframework.boot:spring-boot-starter-actuator"
+    implementation "org.springframework.kafka:spring-kafka"
+    implementation "io.confluent:kafka-avro-serializer:$kafkaAvroSerializerVersion"
+    implementation "org.apache.avro:avro:$avroVersion"
+    implementation "org.springframework.boot:spring-boot-starter-data-redis"
+    implementation "com.clickhouse:clickhouse-jdbc:$clickhouseJdbcVersion"
+    implementation "org.springframework.boot:spring-boot-starter-jdbc"
+
+    implementation "io.micrometer:micrometer-tracing-bridge-otel"
+    implementation "io.opentelemetry:opentelemetry-exporter-otlp"
+
+    runtimeOnly "net.logstash.logback:logstash-logback-encoder:$logstashEncoderVersion"
+    compileOnly "org.projectlombok:lombok:$lombokVersion"
+    annotationProcessor "org.projectlombok:lombok:$lombokVersion"
+
+    testImplementation "org.springframework.boot:spring-boot-starter-test"
+    testImplementation "org.junit.jupiter:junit-jupiter:$junitJupiterVersion"
+    testImplementation "org.springframework.kafka:spring-kafka-test"
+    testImplementation "org.testcontainers:testcontainers:$testcontainersVersion"
+    testImplementation "org.testcontainers:junit-jupiter:$testcontainersVersion"
+    testImplementation "org.testcontainers:kafka:$testcontainersVersion"
+    testImplementation "org.testcontainers:clickhouse:$testcontainersVersion"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+    testCompileOnly "org.projectlombok:lombok:$lombokVersion"
+    testAnnotationProcessor "org.projectlombok:lombok:$lombokVersion"
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    finalizedBy jacocoTestReport
+}
+
+apply plugin: 'jacoco'
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+avro {
+    createSetters = true
+    fieldVisibility = 'PRIVATE'
+}
