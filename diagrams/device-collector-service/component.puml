@@ -1,0 +1,30 @@
+@startuml
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+System_Boundary(device_collector_service, "device-collector-service (Spring Boot)") {
+    Component(listener, "Kafka Listener", "Spring Kafka @KafkaListener", "Получает Avro-сообщения из Kafka (batch)")
+    Component(deserializer, "Avro Deserializer", "Confluent KafkaAvroDeserializer", "Десериализует сообщения, используя Schema Registry")
+    Component(service, "Device Service", "Spring Service", "Бизнес-логика обработки устройств, обеспечивает идемпотентность")
+    Component(sharding_ds, "ShardingSphere Data Source", "ShardingSphere-JDBC (DataSource)", "Маршрутизирует SQL-запросы к нужным шардам PostgreSQL")
+    Component(error_handler, "Error Handler & DLT Producer", "Spring Error Handler/Kafka Producer", "Обрабатывает ошибки (Retry/DLT), отправляет метрики")
+    Component(actuator, "Spring Actuator", "Monitoring Endpoint", "Предоставляет метрики (/actuator/prometheus) и health-check")
+}
+
+System_Ext(kafka, "Apache Kafka", "Брокер сообщений")
+System_Ext(schema_registry, "Schema Registry", "Сервис схем Avro")
+System_Ext(pg_shards, "PostgreSQL Shards", "Шардированная БД устройств")
+System_Ext(monitoring, "Мониторинг", "Alloy/Prometheus/Grafana")
+
+Rel(kafka, listener, "Сообщения (Avro)", "Poll, Batch consume")
+Rel(listener, deserializer, "Байты сообщения", "Десериализация")
+Rel(deserializer, schema_registry, "Запрос схемы по ID", "HTTP REST")
+Rel(deserializer, service, "Объект Device DTO", "Обработка")
+Rel(service, sharding_ds, "INSERT ... ON CONFLICT", "JDBC (SQL)")
+Rel(sharding_ds, pg_shards, "Запись/обновление на целевом шарде", "JDBC")
+
+Rel(service, error_handler, "Ошибка обработки", "Логирование, передача для retry/DLT")
+Rel(error_handler, kafka, "Сообщение об ошибке (Payload + метаданные)", "Produce в Dead Letter Topic (DLT)")
+
+Rel(actuator, monitoring, "Метрики (Micrometer), Health Status", "Pull/Push (HTTP)")
+
+@enduml

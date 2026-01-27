@@ -1,0 +1,69 @@
+@startuml
+actor "IoT Device" as Device
+participant "Kafka Broker" as Kafka
+participant "DeviceCollectorService" as DCS
+participant "Schema Registry" as SR
+participant "AvroDeserializer" as AVRO
+participant "ShardingSphere JDBC" as SSJDBC
+database "PostgreSQL Shard X" as DB
+participant "Kafka Producer (DLT)" as DLT
+
+title Обработка события об устройстве: success / failure с retry
+
+== 1. Успешная обработка ==
+Device -> Kafka : Публикует Avro(deviceId="abc")
+Kafka -> DCS : Получает сообщение (batch или single)
+activate DCS
+
+DCS -> SR : GET /schemas/ids/{schema_id}
+activate SR
+SR --> DCS : JSON-схема
+deactivate SR
+
+DCS -> AVRO : Десериализовать байты → Device DTO
+activate AVRO
+AVRO --> DCS : com.nashkod.avro.Device
+deactivate AVRO
+
+DCS -> SSJDBC : saveOrUpdate(Device)
+activate SSJDBC
+SSJDBC -> DB : INSERT ... ON CONFLICT (device_id) DO UPDATE
+activate DB
+DB --> SSJDBC : OK
+deactivate DB
+SSJDBC --> DCS : Успех
+deactivate SSJDBC
+
+DCS -> DCS : incrementSuccess(shard=X), log INFO
+DCS -> Kafka : commit offset
+deactivate DCS
+
+== 2. Ошибка → Retry → DLT ==
+Device -> Kafka : Публикует Avro(deviceId="xyz")
+Kafka -> DCS : Получает сообщение
+activate DCS
+
+DCS -> SR : GET схемы
+SR --> DCS : OK
+DCS -> AVRO : Десериализация
+AVRO --> DCS : Device DTO
+
+loop retry (max 3, backoff: 1s/2s/5s)
+  DCS -> SSJDBC : saveOrUpdate(Device)
+  activate SSJDBC
+  SSJDBC -> DB : INSERT ...
+  DB --> SSJDBC : Ошибка (например, connection refused)
+  deactivate SSJDBC
+  DCS -> DCS : Ждёт (backoff)
+end
+
+DCS -> DLT : Публикует в device-dlt-topic\n{payload, error, shard=X}
+activate DLT
+DLT --> DCS : Подтверждение
+deactivate DLT
+
+DCS -> DCS : incrementError(shard=X), log ERROR
+DCS -> Kafka : commit offset (пропуск сообщения)
+deactivate DCS
+
+@enduml

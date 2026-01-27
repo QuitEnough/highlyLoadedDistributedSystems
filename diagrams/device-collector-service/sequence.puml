@@ -1,0 +1,36 @@
+@startuml
+actor "IoT Device" as Device
+participant "Kafka" as Kafka
+participant "DeviceCollectorService" as DCS
+participant "Schema Registry" as SR
+database "PostgreSQL Shard X" as DB
+participant "Kafka (DLT)" as DLT
+
+== 1. Успешная обработка входящего события ==
+Device -> Kafka : Публикует Avro(deviceId="abc")
+Kafka -> DCS : Получает сообщение
+DCS -> SR : GET /schemas/ids/{id}
+SR --> DCS : Возвращает Avro-схему
+DCS -> DCS : Десериализует → Device DTO
+DCS -> DB : INSERT INTO devices (...) \nON CONFLICT (device_id) DO UPDATE
+DB --> DCS : OK
+DCS -> DCS : incrementSuccess(shard=X)
+DCS -> Kafka : commit offset
+
+== 2. Ошибка → Retry → DLT ==
+Device -> Kafka : Публикует Avro(deviceId="xyz")
+Kafka -> DCS : Получает сообщение
+DCS -> SR : GET схемы
+SR --> DCS : OK
+DCS -> DCS : Десериализация → Device DTO
+
+loop retry (3 attempts, backoff: 1s, 2s, 5s)
+  DCS -> DB : INSERT ...
+  DB --> DCS : Ошибка: Connection refused
+  DCS -> DCS : Ждёт
+end
+
+DCS -> DLT : Публикует в device-dlt-topic\n{payload, error, shard=X}
+DCS -> DCS : incrementError(shard=X)
+DCS -> Kafka : commit offset (пропуск)
+@enduml

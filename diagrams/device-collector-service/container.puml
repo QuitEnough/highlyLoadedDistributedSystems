@@ -1,0 +1,32 @@
+@startuml
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(iot_device, "IoT Device", "Публикует события")
+Person(admin, "Администратор", "Мониторит DLT и метрики")
+
+System_Boundary(iot_platform, "IoT Platform") {
+
+    Container(device_collector, "device-collector-service", "Spring Boot 3.5", "Обработка устройств из Kafka")
+
+    Container(kafka, "Apache Kafka", "Message Broker", "Топики:\n- device-id-topic\n- device-dlt-topic")
+    Container(schema_registry, "Schema Registry", "Confluent", "Хранение Avro-схем")
+
+    ContainerDb(shard0, "PostgreSQL Shard 0", "Database", "devices таблица")
+    ContainerDb(shard1, "PostgreSQL Shard 1", "Database", "devices таблица")
+
+    Container(alloy, "Grafana Alloy", "OpenTelemetry Collector", "Сбор метрик")
+    Container(grafana, "Grafana", "Dashboard UI", "Мониторинг")
+}
+
+Rel(iot_device, kafka, "Публикует Avro", "device-id-topic")
+Rel(kafka, device_collector, "Потребляет", "Kafka Consumer (Avro)")
+Rel(device_collector, schema_registry, "Получает схему", "HTTP REST")
+Rel(device_collector, shard0, "INSERT/UPDATE", "ShardingSphere-JDBC")
+Rel(device_collector, shard1, "INSERT/UPDATE", "ShardingSphere-JDBC")
+Rel(device_collector, kafka, "Публикует ошибки", "device-dlt-topic")
+Rel(device_collector, alloy, "Экспорт метрик", "Micrometer → OpenTelemetry")
+
+Rel(admin, grafana, "Мониторинг", "HTTP")
+Rel(admin, kafka, "Анализ DLT", "Kafka consumer CLI / UI")
+
+@enduml

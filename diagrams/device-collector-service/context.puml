@@ -1,0 +1,21 @@
+@startuml
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+Person(iot_device, "IoT Device", "Генерирует события о новых/изменённых устройствах")
+System_Ext(events_collector, "events-collector-service", "Обрабатывает телеметрию устройств")
+System_Ext(kafka, "Apache Kafka", "Message Broker")
+System_Ext(schema_registry, "Schema Registry", "Confluent Schema Registry")
+System_Ext(dlq_consumer, "DLQ Consumer / Admin Tool", "Мониторинг ошибок")
+
+System_Boundary(device_platform, "IoT Platform") {
+    System(device_collector, "device-collector-service", "Spring Boot 3.5\nОбработка событий об устройствах")
+}
+
+Rel(iot_device, device_collector, "Публикует в Kafka", "Avro (device-id-topic)")
+Rel(device_collector, events_collector, "Потребляет метаданные", "Через ClickHouse / Kafka (косвенно)")
+
+Rel(device_collector, kafka, "Читает/пишет", "Kafka (device-id-topic, device-dlt-topic)")
+Rel(device_collector, schema_registry, "Валидация схем", "HTTP REST")
+Rel(device_collector, dlq_consumer, "Отправляет ошибки", "Kafka → device-dlt-topic")
+
+@enduml
