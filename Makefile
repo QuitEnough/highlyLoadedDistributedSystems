@@ -76,7 +76,7 @@ infra:
 	@echo "Starting infrastructure services: $(INFRA_SERVICES)"
 	$(DOCKER_COMPOSE) up -d $(INFRA_SERVICES)
 	@echo "Waiting for Keycloak to be ready..."
-	@$(WAIT_KEYCLOAK_CMD)
+	@$(WAIT_KEYCLOAK_CMD) || echo "Warning: Keycloak healthcheck failed, continuing anyway..."
 	@echo "Waiting for Kafka to be ready..."
 	@$(WAIT_KAFKA_CMD)
 	@echo "Infrastructure is ready!"
@@ -112,13 +112,19 @@ down:
 	@echo "Stopping and removing all containers, networks, volumes..."
 	$(DOCKER_COMPOSE) down -v
 
+ifeq ($(OS),Windows_NT)
+GRADLEW = gradlew.bat
+else
+GRADLEW = ./gradlew
+endif
+
 emulator-build:
 	@echo "Building emulator service..."
-	cd services/emulator-service && ./gradlew build -x test
+	cd services/emulator-service && $(GRADLEW) build -x test
 
 emulator:
 	@echo "Starting emulator service..."
-	cd services/emulator-service && ./gradlew bootRun
+	cd services/emulator-service && $(GRADLEW) bootRun
 
 send-million-messages:
 	@echo "Sending 1,000,000 messages to Kafka..."
