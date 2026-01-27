@@ -22,12 +22,12 @@ loop периодически
     alt lock получен
         OP -> CH : SELECT * FROM device_outbox WHERE status=0 LIMIT 100
         loop для каждой записи
-            OP -> R : SADD published:devices <deviceId>
+            OP -> R : SMEMBERS + SADD published:devices <deviceId> (read-through)
             alt deviceId НОВЫЙ
                 OP -> KafkaOut : produce(deviceId)
                 OP -> CH : UPDATE device_outbox SET status=1, sent_at=now()
             else уже публиковался
-                note right: Пропускаем
+                OP -> CH : UPDATE device_outbox SET status=1, sent_at=now() (skip publish)
             end
         end
         OP -> R : DEL outbox:lock

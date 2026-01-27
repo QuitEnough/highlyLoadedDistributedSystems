@@ -23,14 +23,19 @@ public class RedisLock {
         }
     }
 
-    // Для идемпотентности публикации
-    public boolean saddIfAbsent(String key, String value, int ttlSeconds) {
-        Long result = redisTemplate.opsForSet().add(key, value);
-        if (result != null && result > 0) {
-            redisTemplate.expire(key, java.time.Duration.ofSeconds(ttlSeconds));
-            return true;
+    public boolean isDevicePublished(String deviceId, int ttlSeconds) {
+        Boolean exists = redisTemplate.opsForSet().isMember("published:devices", deviceId);
+        if (Boolean.TRUE.equals(exists)) {
+            return true; // Already published
         }
-        return false;
+
+        // Atomically add and set TTL
+        Long added = redisTemplate.opsForSet().add("published:devices", deviceId);
+        if (added != null && added > 0) {
+            redisTemplate.expire("published:devices", java.time.Duration.ofSeconds(ttlSeconds));
+            return false; // New device, not published yet
+        }
+        return true; // Race condition: someone else added simultaneously
     }
 
 }

@@ -24,13 +24,16 @@ public class OutboxProcessor {
         try {
             var records = outboxRepository.findNewRecords(100);
             for (var record : records) {
-                if (redisLock.saddIfAbsent("published:devices", record.getDeviceId(), 3600)) {
+                if (!redisLock.isDevicePublished(record.getDeviceId(), 3600)) {
                     try {
                         deviceIdPublisher.sendDeviceId(record.getDeviceId());
                         outboxRepository.markAsSent(record.getDeviceId());
                     } catch (Exception e) {
                         outboxRepository.incrementAttempts(record.getDeviceId(), e.getMessage());
                     }
+                } else {
+                    // Device already published, mark as sent to avoid reprocessing
+                    outboxRepository.markAsSent(record.getDeviceId());
                 }
             }
         } finally {
