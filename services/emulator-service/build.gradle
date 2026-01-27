@@ -1,0 +1,35 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version "$springBootVersion"
+    id 'io.spring.dependency-management' version "$springDependencyManagementVersion"
+}
+
+group = 'com.slf4u0'
+version = "$appVersion"
+sourceCompatibility = "$javaLanguageVersion"
+description = 'emulator-service'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation "org.springframework.boot:spring-boot-starter-web"
+    implementation "org.springframework.boot:spring-boot-starter-actuator"
+    implementation "org.springframework.kafka:spring-kafka"
+
+    implementation "io.micrometer:micrometer-tracing-bridge-otel"
+    implementation "io.opentelemetry:opentelemetry-exporter-otlp"
+
+    compileOnly "org.projectlombok:lombok:$lombokVersion"
+    annotationProcessor "org.projectlombok:lombok:$lombokVersion"
+
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
