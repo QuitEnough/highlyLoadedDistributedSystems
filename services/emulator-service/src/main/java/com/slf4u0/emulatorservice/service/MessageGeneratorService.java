@@ -1,6 +1,7 @@
 package com.slf4u0.emulatorservice.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.slf4u0.emulatorservice.model.DeviceEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -18,7 +19,7 @@ import java.util.UUID;
 public class MessageGeneratorService {
 
     @Autowired
-    private KafkaTemplate<String, String> kafkaTemplate;
+    private KafkaTemplate<String, Object> kafkaTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Random random = new Random();
 
@@ -52,6 +53,29 @@ public class MessageGeneratorService {
         } catch (Exception e) {
             log.error("Error sending message to Kafka", e);
         }
+    }
+
+    // Method to send DeviceEvent objects
+    public void sendDeviceEvent(String topic, DeviceEvent event) {
+        try {
+            kafkaTemplate.send(topic, event.getDeviceId(), event);
+        } catch (Exception e) {
+            log.error("Error sending DeviceEvent to Kafka", e);
+        }
+    }
+
+    // Method to simulate controller sending data
+    public void sendControllerData(String controllerId, String eventType, String payload) {
+        DeviceEvent event = new DeviceEvent(controllerId, eventType, payload);
+        kafkaTemplate.send("events", controllerId, event);
+        log.info("Sent controller event to Kafka: {}", event);
+    }
+
+    // Method to simulate script sending data
+    public void sendScriptData(String deviceId, String eventType, String payload) {
+        DeviceEvent event = new DeviceEvent(deviceId, eventType, payload);
+        kafkaTemplate.send("events", deviceId, event);
+        log.info("Sent script event to Kafka: {}", event);
     }
 
     private String generateRandomEvent() {

@@ -113,13 +113,13 @@ down:
 	$(DOCKER_COMPOSE) down -v
 
 emulator-build:
-@echo "Building emulator service..."
-cd services/emulator-service && ./gradlew build -x test
+	@echo "Building emulator service..."
+	cd services/emulator-service && ./gradlew build -x test
 
 emulator:
-@echo "Starting emulator service..."
-cd services/emulator-service && ./gradlew bootRun
+	@echo "Starting emulator service..."
+	cd services/emulator-service && ./gradlew bootRun
 
 send-million-messages:
-@echo "Sending 1,000,000 messages to Kafka..."
-bash infrastructure/send_million_messages.sh
+	@echo "Sending 1,000,000 messages to Kafka..."
+	bash infrastructure/send_million_messages.sh
