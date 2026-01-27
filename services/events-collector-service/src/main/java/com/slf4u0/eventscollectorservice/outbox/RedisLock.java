@@ -16,10 +16,11 @@ public class RedisLock {
         return Boolean.TRUE.equals(result);
     }
 
-    public void unlock(String key, String expectedValue) {
-        // Простая реализация: удаляем без проверки владельца
-        redisTemplate.delete(key);
-        // В продакшене: Lua-скрипт с проверкой значения
+    public void unlock(String lockKey, String expectedValue) {
+        String currentValue = redisTemplate.opsForValue().get(lockKey);
+        if (expectedValue.equals(currentValue)) {
+            redisTemplate.delete(lockKey);
+        }
     }
 
     // Для идемпотентности публикации

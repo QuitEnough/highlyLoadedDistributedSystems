@@ -12,27 +12,29 @@ import java.time.Duration;
 @RequiredArgsConstructor
 public class DeviceDeduplicator {
 
-    private final StatefulRedisConnection<String, String> lettuceConnection;
+    private final StringRedisTemplate redisTemplate;
     private static final String SEEN_DEVICES_KEY = "devices:seen";
     private static final Duration TTL = Duration.ofHours(1);
 
     /**
-     * Проверяет, был ли deviceId уже добавлен.
-     * @param deviceId Идентификатор устройства.
-     * @return true, если deviceId был добавлен впервые, иначе false.
+     * Проверяет, был ли deviceId уже обработан.
+     * Использует Read-Through: сначала читаем, потом пишем.
+     *
+     * @return true, если deviceId новый
      */
-    public boolean checkAndAddDeviceId(String deviceId) {
-        RedisCommands<String, String> syncCommands = lettuceConnection.sync();
-
-        // SADD возвращает 1, если элемент новый, и 0, если уже существует.
-        Long addedCount = syncCommands.sadd(SEEN_DEVICES_KEY, deviceId);
-
-        if (addedCount == 1L) {
-            // Если добавлен впервые, устанавливаем TTL для ключа.
-            syncCommands.expire(SEEN_DEVICES_KEY, TTL);
-            return true; // Это новое устройство
+    public boolean isNewDevice(String deviceId) {
+        Boolean exists = redisTemplate.opsForSet().isMember(SEEN_DEVICES_KEY, deviceId);
+        if (Boolean.TRUE.equals(exists)) {
+            return false; // уже видели
         }
-        return false; // Это уже известное устройство
+
+        // Атомарно добавляем и устанавливаем TTL
+        Long added = redisTemplate.opsForSet().add(SEEN_DEVICES_KEY, deviceId);
+        if (added != null && added > 0) {
+            redisTemplate.expire(SEEN_DEVICES_KEY, TTL);
+            return true;
+        }
+        return false; // гонка: кто-то добавил одновременно
     }
 
 }

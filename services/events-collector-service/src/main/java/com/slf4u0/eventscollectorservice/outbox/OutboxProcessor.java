@@ -9,7 +9,6 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class OutboxProcessor {
 
-    private final RedissonClient redissonClient;
     private final OutboxRepository outboxRepository;
     private final DeviceIdPublisher deviceIdPublisher;
     private final RedisLock redisLock;
