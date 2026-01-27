@@ -3,6 +3,7 @@ package com.slf4u0.eventscollectorservice.outbox;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -15,14 +16,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OutboxRepository {
 
-    private final Connection clickhouseDataSource;
+    private final DataSource clickhouseDataSource;
 
     public void insert(String deviceId) {
         String sql = """
             INSERT INTO device_outbox (device_id, created_at, status, sent_at, attempts, last_error)
             VALUES (?, ?, 0, toDateTime(0), 0, '')
             """;
-        try (PreparedStatement stmt = clickhouseDataSource.prepareStatement(sql)) {
+        try (Connection conn = clickhouseDataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, deviceId);
             stmt.setObject(2, LocalDateTime.now());
             stmt.execute();
@@ -40,7 +42,8 @@ public class OutboxRepository {
             LIMIT ?
             """;
         List<DeviceOutboxRecord> records = new ArrayList<>();
-        try (PreparedStatement stmt = clickhouseDataSource.prepareStatement(sql)) {
+        try (Connection conn = clickhouseDataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, limit);
             ResultSet rs = stmt.executeQuery();
             while (rs.next()) {
@@ -65,7 +68,8 @@ public class OutboxRepository {
             UPDATE status = 1, sent_at = ?
             WHERE device_id = ?
             """;
-        try (PreparedStatement stmt = clickhouseDataSource.prepareStatement(sql)) {
+        try (Connection conn = clickhouseDataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setObject(1, LocalDateTime.now());
             stmt.setString(2, deviceId);
             stmt.execute();
@@ -80,7 +84,8 @@ public class OutboxRepository {
             UPDATE attempts = attempts + 1, last_error = ?
             WHERE device_id = ?
             """;
-        try (PreparedStatement stmt = clickhouseDataSource.prepareStatement(sql)) {
+        try (Connection conn = clickhouseDataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, error);
             stmt.setString(2, deviceId);
             stmt.execute();
