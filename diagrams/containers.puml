@@ -9,6 +9,7 @@ System_Boundary(iot_platform, "IoT Monitoring Platform") {
     ContainerDb(postgres, "PostgreSQL", "Database", "Реляционная БД: устройства, команды, процессы")
     ContainerDb(keycloak_postgres, "Keycloak PostgreSQL", "Database", "Хранение пользователей Keycloak")
     ContainerDb(clickhouse, "ClickHouse", "NoSQL Database", "Хранилище телеметрии IoT")
+    ContainerDb(pg_shards, "PostgreSQL Shards", "Database", "Шардированная БД устройств (Shard 0, Shard 1)")
 
     Container(kafka, "Kafka", "Message Broker", "Шина событий, топики: events/dlt/device-id")
     Container(redis, "Redis", "In-Memory Cache", "Кэш, Pub/Sub")
@@ -30,6 +31,7 @@ System_Boundary(iot_platform, "IoT Monitoring Platform") {
     Container(redis_exporter, "Redis Exporter", "Prometheus Exporter", "Преобразует Redis INFO в /metrics")
 
     Container(events_collector, "events-collector-service", "Spring Boot 3.5", "Сбор и обработка событий из Kafka")
+    Container(device_collector, "device-collector-service", "Spring Boot 3.5", "Сбор и обработка устройств из Kafka с шардированием")
 }
 
 Rel(iot_device, kafka, "Телеметрия (Avro)", "Kafka/Avro [ПЛАНИРУЕТСЯ]")
@@ -43,6 +45,13 @@ Rel(events_collector, clickhouse, "INSERT device_events + device_outbox", "Click
 Rel(events_collector, redis, "Дедупликация device_id\nSADD devices:seen <id>\nTTL = 1h", "Redis Set + EXPIRE")
 Rel(events_collector, alloy, "Метрики, логи, трейсы", "OpenTelemetry")
 Rel(events_collector, kafka, "Отправка в топик 'devices'", "Kafka produce")
+Rel(events_collector, alloy, "Метрики, логи, трейсы", "OpenTelemetry (Micrometer/Actuator)")
+
+Rel(kafka, device_collector, "Потребление сообщений из топика 'device-id-topic'", "Kafka Consumer (Avro, Batch)")
+Rel(device_collector, schema_registry, "Получение Avro-схемы", "HTTP REST")
+Rel(device_collector, pg_shards, "INSERT/UPDATE устройств (ShardingSphere-JDBC, UPSERT ON CONFLICT)", "JDBC")
+Rel(device_collector, kafka, "Отправка в Dead Letter Topic", "Kafka Producer (DLT)")
+Rel(device_collector, alloy, "Метрики, логи, трейсы", "OpenTelemetry (Micrometer/Actuator)")
 
 Rel(camunda, keycloak, "Аутентификация пользователей", "OIDC")
 Rel(camunda, postgres, "Хранение процессов", "JDBC")
