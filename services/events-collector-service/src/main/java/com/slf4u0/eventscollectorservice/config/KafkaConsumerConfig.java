@@ -1,6 +1,7 @@
 package com.slf4u0.eventscollectorservice.config;
 
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,11 +10,14 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.util.backoff.FixedBackOff;
 
 import java.util.HashMap;
 import java.util.Map;
 
 @Configuration
+@Slf4j
 public class KafkaConsumerConfig {
 
     @Value("${spring.kafka.bootstrap-servers}")
@@ -46,6 +50,26 @@ public class KafkaConsumerConfig {
                 org.springframework.kafka.listener.ContainerProperties.AckMode.RECORD
         );
         return factory;
+    }
+
+    @Bean
+    public DefaultErrorHandler errorHandler() {
+        // 3 попытки с интервалом 100мс
+        FixedBackOff fixedBackOff = new FixedBackOff(100L, 3);
+
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(
+                (record, exception) -> {
+                    // Логика после исчерпания попыток: просто логируем
+                    log.error("Failed to process record after retries. Record: {}, Error: {}",
+                            record.value(), exception.getMessage());
+                },
+                fixedBackOff
+        );
+
+        // Не переповторяем для критических ошибок (опционально)
+        errorHandler.addNotRetryableExceptions(IllegalArgumentException.class);
+
+        return errorHandler;
     }
 
 }

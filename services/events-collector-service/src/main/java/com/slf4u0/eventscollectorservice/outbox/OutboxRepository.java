@@ -13,7 +13,7 @@ import java.util.List;
 
 @Repository
 @RequiredArgsConstructor
-public class DeviceOutboxRepository {
+public class OutboxRepository {
 
     private final Connection clickhouseDataSource;
 

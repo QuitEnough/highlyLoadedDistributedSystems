@@ -1,7 +1,7 @@
 package com.slf4u0.eventscollectorservice.listener;
 
 import com.slf4u0.avro.DeviceEvent;
-import com.slf4u0.eventscollectorservice.deduplication.RedisDeduplicator;
+import com.slf4u0.eventscollectorservice.deduplication.DeviceDeduplicator;
 import com.slf4u0.eventscollectorservice.outbox.OutboxWriter;
 import com.slf4u0.eventscollectorservice.repository.DeviceEventRepository;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 public class EventsCollector {
 
     private final DeviceEventRepository deviceEventRepository;
-    private final RedisDeduplicator redisDeduplicator;
+    private final DeviceDeduplicator deviceDeduplicator;
     private final OutboxWriter outboxWriter;
 
     @KafkaListener(topics = "events")
@@ -22,7 +22,7 @@ public class EventsCollector {
         deviceEventRepository.save(event); // ← нужно реализовать
 
         // 2. Дедупликация по deviceId
-        boolean isNewDevice = redisDeduplicator.isNewDevice(event.getDeviceId());
+        boolean isNewDevice = deviceDeduplicator.isNewDevice(event.getDeviceId());
 
         // 3. Если новый — создать запись в outbox
         if (isNewDevice) {
