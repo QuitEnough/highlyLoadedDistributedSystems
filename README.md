@@ -44,19 +44,23 @@ Java 24, Spring Boot 3.5 (WebFlux / Web MVC), Go 1.20+ (Gin/Fiber/net/http), Apa
 iot-platform-/
 ├── diagrams/                       # C4-диаграммы архитектуры
 │ ├── events-collector-service/
+│ │   ├── components.puml 
 │ │   └── sequence.puml 
 │ ├── sequence.puml
 │ ├── context.puml
 │ └── containers.puml
 ├── infrastructure/                 # Конфигурации инфраструктуры
 │ ├── alloy/
+│ ├── databases/
 │ ├── grafana/
 │ ├── keycloak/
 │ ├── loki/
 │ ├── prometheus/
 │ ├── tempo/
+│ ├── scripts/
 │ └── docker-compose.yaml
-├── events-collector-service/       # Единственный микросервис модуля 2
+├── events-collector-service/
+├── emulator-service/
 ├── Makefile                        # Сценарии автоматизации
 ├── .env.example                    # Пример переменных окружения
 └── README.md    
@@ -103,6 +107,58 @@ make all
 - Запускает всю инфраструктуру: Postgres, ClickHouse, Kafka, Schema Registry, Redis, MinIO, Keycloak, Camunda, Prometheus, Grafana, Loki, Tempo, Alloy.
 - Собирает и запускает **только** `events-collector-service`.
 
+### Запуск эмулятора и отправка миллионов сообщений
+
+Для тестирования платформы без необходимости вручную отправлять события, вы можете использовать эмулятор:
+
+```bash
+# Запустить инфраструктуру (Kafka и т.д.)
+make infra
+
+# В новом терминале запустить эмулятор
+make emulator
+
+# В третьем терминале отправить 1 миллион сообщений
+make send-million-messages
+```
+
+Эмулятор также может быть запущен как отдельный сервис и имеет REST API для отправки различных количеств сообщений.
+
+#### Подробнее об эмуляторе
+
+Эмулятор сервиса (emulator-service) - это специальный сервис, созданный для симуляции IoT устройств и генерации событий для тестирования платформы. Он предоставляет следующие возможности:
+
+- **Планировщик событий**: Автоматически отправляет данные в Kafka каждые 5 минут для имитации постоянного потока данных от устройств
+- **Одноразовые сообщения**: REST API endpoints для немедленной отправки сообщений по запросу
+- **Массовая генерация**: Возможность отправки большого количества сообщений (например, 1 миллион) для нагрузочного тестирования
+- **Реалистичные данные**: Генерирует реалистичные данные датчиков IoT, включая температуру, влажность, уровень заряда батареи и т.д.
+
+##### Функциональность эмулятора
+
+- `GET /api/emulator/health` - проверка состояния сервиса
+- `POST /api/emulator/controller/{controllerId}` - отправка данных контроллера
+- `POST /api/emulator/script/{deviceId}` - отправка данных скрипта
+- `GET /api/emulator/test-data` - ручной запуск отправки тестовых данных
+
+##### Использование
+
+```bash
+# Запуск сервиса эмулятора
+make emulator
+
+# Отправка 1 миллиона сообщений с использованием make target
+make send-million-messages
+
+# Или запуск скрипта напрямую
+bash infrastructure/send_million_messages.sh
+
+# Или отправка сообщений через API
+curl -X POST "http://localhost:8082/api/emulator/controller/device-123" \
+  -H "Content-Type: application/json" \
+  -d '{"temperature": 25.5, "humidity": 60}'
+```
+
+Эмулятор интегрирован с Kafka для публикации сообщений в топик `events`, взаимодействует с events-collector-service как источник данных для тестирования IoT-платформы и работает со всей инфраструктурой.
 ### Ручной запуск (без Makefile)
 
 **Запуск инфраструктуры:**

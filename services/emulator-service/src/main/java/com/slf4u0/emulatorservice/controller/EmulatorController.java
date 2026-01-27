@@ -1,6 +1,7 @@
 package com.slf4u0.emulatorservice.controller;
 
 import com.slf4u0.emulatorservice.service.EmulatorService;
+import com.slf4u0.emulatorservice.service.MessageGeneratorService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -10,38 +11,23 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class EmulatorController {
 
-    private EmulatorService emulatorService;
+    private MessageGeneratorService messageGeneratorService;
 
-    @PostMapping("/controller/{controllerId}")
-    public ResponseEntity<String> sendControllerData(
-            @PathVariable String controllerId,
-            @RequestParam(defaultValue = "TELEMETRY") String eventType,
-            @RequestBody String payload
-    ) {
-        emulatorService.sendControllerData(controllerId, eventType, payload);
-        return ResponseEntity.ok("Controller data sent to Kafka for device: " + controllerId);
+    @PostMapping("/send-messages")
+    public ResponseEntity<String> sendMessages(@RequestParam(defaultValue = "100") int count) {
+        new Thread(() -> messageGeneratorService.sendMultipleMessages(count)).start();
+        return ResponseEntity.ok("Started sending " + count + " messages in the background.");
     }
 
-    @PostMapping("/script/{deviceId}")
-    public ResponseEntity<String> sendScriptData(
-            @PathVariable String deviceId,
-            @RequestParam(defaultValue = "SCRIPT_EXECUTION") String eventType,
-            @RequestBody String payload) {
-
-        emulatorService.sendScriptData(deviceId, eventType, payload);
-        return ResponseEntity.ok("Script data sent to Kafka for device: " + deviceId);
-    }
-
-    @GetMapping("/test-data")
-    public ResponseEntity<String> triggerTestData() {
-        // Trigger the periodic method manually for testing
-        emulatorService.sendPeriodicDataToKafka();
-        return ResponseEntity.ok("Test data sent to Kafka");
+    @PostMapping("/send-million-messages")
+    public ResponseEntity<String> sendMillionMessages() {
+        new Thread(() -> messageGeneratorService.sendMultipleMessages(1000000)).start();
+        return ResponseEntity.ok("Started sending 1,000,000 messages in the background.");
     }
 
     @GetMapping("/health")
-    public ResponseEntity<String> healthCheck() {
-        return ResponseEntity.ok("Emulator service is running");
+    public ResponseEntity<String> health() {
+        return ResponseEntity.ok("Emulator service is running.");
     }
 
 }

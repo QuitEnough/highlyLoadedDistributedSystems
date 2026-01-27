@@ -26,7 +26,7 @@ INFRA_SERVICES ?= \
     redis-exporter \
     schema-init
 
-.PHONY: all up start stop clean logs ps reset infra infra-logs infra-stop rebuild
+.PHONY: all up start stop clean logs ps reset infra infra-logs infra-stop rebuild emulator emulator-build send-million-messages
 
 all: up
 
@@ -111,3 +111,15 @@ rebuild: clean all
 down:
 	@echo "Stopping and removing all containers, networks, volumes..."
 	$(DOCKER_COMPOSE) down -v
+
+emulator-build:
+@echo "Building emulator service..."
+cd services/emulator-service && ./gradlew build -x test
+
+emulator:
+@echo "Starting emulator service..."
+cd services/emulator-service && ./gradlew bootRun
+
+send-million-messages:
+@echo "Sending 1,000,000 messages to Kafka..."
+bash infrastructure/send_million_messages.sh
