@@ -119,37 +119,56 @@ else
 GRADLEW = ./gradlew
 endif
 
-emulator-build:
-	@echo "Building emulator service..."
-	cd services/emulator-service && $(GRADLEW) build -x test
+#emulator-build:
+#	@echo "Building emulator service..."
+#	cd services/emulator-service && $(GRADLEW) build -x test
 
 emulator-docker-build:
 	@echo "Building emulator service Docker image..."
-	docker build -f services/emulator-service/Dockerfile -t emulator-service .
+	docker build --no-cache -f services/emulator-service/Dockerfile -t emulator-service .
 
-emulator:
-	@echo "Starting emulator service..."
-	cd services/emulator-service && $(GRADLEW) bootRun
+#emulator:
+#	@echo "Starting emulator service..."
+#	cd services/emulator-service && $(GRADLEW) bootRun
 
 emulator-docker-run:
 	@echo "Starting emulator service in Docker..."
 	$(DOCKER_COMPOSE) up -d emulator-service
 
-ifeq ($(OS),Windows_NT)
+#ifeq ($(OS),Windows_NT)
+#send-million-messages:
+#	@echo "Sending 1,000,000 messages to Kafka..."
+#	powershell -Command " \
+#		while ($$true) { \
+#			try { \
+#				Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8085/api/emulator/health' -ErrorAction Stop | Out-Null; \
+#				break; \
+#			} catch { \
+#				Write-Host 'Waiting for emulator...'; Start-Sleep -Seconds 2; \
+#			} \
+#		}; \
+#		Write-Host 'Emulator ready. Sending messages...'; \
+#		Invoke-WebRequest -Method POST -UseBasicParsing -Uri 'http://127.0.0.1:8085/api/emulator/send-million-messages'"
+#else
+#send-million-messages:
+#	bash infrastructure/send_million_messages.sh
+#endif
+
 send-million-messages:
 	@echo "Sending 1,000,000 messages to Kafka..."
-	powershell -Command " \
-		while ($$true) { \
-			try { \
-				Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8085/api/emulator/health' -ErrorAction Stop | Out-Null; \
-				break; \
-			} catch { \
-				Write-Host 'Waiting for emulator...'; Start-Sleep -Seconds 2; \
-			} \
-		}; \
-		Write-Host 'Emulator ready. Sending messages...'; \
-		Invoke-WebRequest -Method POST -UseBasicParsing -Uri 'http://127.0.0.1:8085/api/emulator/send-million-messages'"
-else
-send-million-messages:
-	bash infrastructure/send_million_messages.sh
-endif
+	@echo "Waiting for emulator service..."
+	@until curl -sf http://127.0.0.1:8085/api/emulator/health >/dev/null 2>&1; do \
+		echo "Emulator not ready, waiting..."; \
+		sleep 2; \
+	done
+	@echo "Emulator ready. Sending messages..."
+	@response=$$(curl -s -X POST http://127.0.0.1:8085/api/emulator/send-million-messages); \
+	echo "$$response"
+	@echo "Message sending initiated. Check logs for progress."
+
+emulator-logs:
+	$(DOCKER_COMPOSE) logs -f --tail=100 emulator-service
+
+emulator-kafka-docker-run:
+	@echo "Starting emulator service in Docker..."
+	$(DOCKER_COMPOSE) up -d kafka emulator-service

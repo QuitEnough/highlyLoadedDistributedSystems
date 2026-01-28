@@ -1,5 +1,6 @@
 package com.slf4u0.emulatorservice.config;
 
+import jakarta.annotation.PostConstruct;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,6 +18,11 @@ public class KafkaProducerConfig {
 
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
+
+    @PostConstruct
+    public void logBootstrap() {
+        System.out.println(">>> ACTUAL BOOTSTRAP SERVERS: " + bootstrapServers);
+    }
 
     @Bean
     public ProducerFactory<String, Object> producerFactory() {
