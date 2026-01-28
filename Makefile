@@ -24,9 +24,10 @@ INFRA_SERVICES ?= \
 	keycloak-postgres-exporter \
 	kafka-exporter \
     redis-exporter \
-    schema-init
+    schema-init \
+    emulator-service
 
-.PHONY: all up start stop clean logs ps reset infra infra-logs infra-stop rebuild emulator emulator-build send-million-messages
+.PHONY: all up start stop clean logs ps reset infra infra-logs infra-stop rebuild emulator emulator-build emulator-docker-build send-million-messages
 
 all: up
 
@@ -121,6 +122,10 @@ endif
 emulator-build:
 	@echo "Building emulator service..."
 	cd services/emulator-service && $(GRADLEW) build -x test
+
+emulator-docker-build:
+	@echo "Building emulator service Docker image..."
+	docker build -f services/emulator-service/src/Dockerfile -t emulator-service ..
 
 emulator:
 	@echo "Starting emulator service..."

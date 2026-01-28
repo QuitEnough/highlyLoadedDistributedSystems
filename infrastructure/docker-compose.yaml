@@ -32,6 +32,28 @@ services:
       retries: 5
       start_period: 30s
 
+  emulator-service:
+    build:
+      context: ..
+      dockerfile: services/emulator-service/Dockerfile
+    container_name: emulator-service
+    ports:
+      - "8085:8085"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS_DOCKER}
+      SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL_DOCKER}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8085/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   postgres:
     image: postgres:16-alpine
     container_name: postgres
