@@ -125,11 +125,15 @@ emulator-build:
 
 emulator-docker-build:
 	@echo "Building emulator service Docker image..."
-	docker build -f services/emulator-service/src/Dockerfile -t emulator-service ..
+	docker build -f services/emulator-service/Dockerfile -t emulator-service .
 
 emulator:
 	@echo "Starting emulator service..."
 	cd services/emulator-service && $(GRADLEW) bootRun
+
+emulator-docker-run:
+	@echo "Starting emulator service in Docker..."
+	$(DOCKER_COMPOSE) up -d emulator-service
 
 send-million-messages:
 	@echo "Sending 1,000,000 messages to Kafka..."
