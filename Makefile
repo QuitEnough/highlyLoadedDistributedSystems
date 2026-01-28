@@ -135,6 +135,21 @@ emulator-docker-run:
 	@echo "Starting emulator service in Docker..."
 	$(DOCKER_COMPOSE) up -d emulator-service
 
+ifeq ($(OS),Windows_NT)
 send-million-messages:
 	@echo "Sending 1,000,000 messages to Kafka..."
+	powershell -Command " \
+		while ($$true) { \
+			try { \
+				Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8085/api/emulator/health' -ErrorAction Stop | Out-Null; \
+				break; \
+			} catch { \
+				Write-Host 'Waiting for emulator...'; Start-Sleep -Seconds 2; \
+			} \
+		}; \
+		Write-Host 'Emulator ready. Sending messages...'; \
+		Invoke-WebRequest -Method POST -UseBasicParsing -Uri 'http://127.0.0.1:8085/api/emulator/send-million-messages'"
+else
+send-million-messages:
 	bash infrastructure/send_million_messages.sh
+endif
