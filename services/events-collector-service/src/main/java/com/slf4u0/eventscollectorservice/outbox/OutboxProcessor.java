@@ -1,5 +1,6 @@
 package com.slf4u0.eventscollectorservice.outbox;
 
+import com.slf4u0.eventscollectorservice.metrics.AppMetrics;
 import com.slf4u0.eventscollectorservice.producer.DeviceIdPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -12,6 +13,7 @@ public class OutboxProcessor {
     private final OutboxRepository outboxRepository;
     private final DeviceIdPublisher deviceIdPublisher;
     private final RedisLock redisLock;
+    private final AppMetrics metrics;
 
     @Scheduled(fixedDelay = 10_000)
     public void processOutbox() {
@@ -30,10 +32,12 @@ public class OutboxProcessor {
                         outboxRepository.markAsSent(record.getDeviceId());
                     } catch (Exception e) {
                         outboxRepository.incrementAttempts(record.getDeviceId(), e.getMessage());
+                        metrics.incrementOutboxFail();
                     }
                 } else {
                     // Device already published, mark as sent to avoid reprocessing
                     outboxRepository.markAsSent(record.getDeviceId());
+                    metrics.incrementEventsDuplicates();
                 }
             }
         } finally {

@@ -1,0 +1,24 @@
+# src/test/resources/application-test.yml
+spring:
+  kafka:
+    bootstrap-servers: ${kafka.bootstrap.servers}
+    consumer:
+      group-id: test-group
+      auto-offset-reset: earliest
+      properties:
+        schema.registry.url: ${schema.registry.url}
+    producer:
+      bootstrap-servers: ${kafka.bootstrap.servers}
+
+  data:
+    redis:
+      host: ${redis.host}
+      port: ${redis.port}
+
+clickhouse:
+  url: ${clickhouse.jdbc.url}
+
+# Отключить tracing в тестах
+management:
+  tracing:
+    enabled: false

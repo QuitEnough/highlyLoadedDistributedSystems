@@ -47,13 +47,14 @@ public class OutboxRepository {
             stmt.setInt(1, limit);
             ResultSet rs = stmt.executeQuery();
             while (rs.next()) {
-                DeviceOutboxRecord r = new DeviceOutboxRecord();
-                r.setDeviceId(rs.getString("device_id"));
-                r.setCreatedAt((LocalDateTime) rs.getObject("created_at"));
-                r.setStatus(rs.getByte("status"));
-                r.setSentAt((LocalDateTime) rs.getObject("sent_at"));
-                r.setAttempts(rs.getInt("attempts"));
-                r.setLastError(rs.getString("last_error"));
+                DeviceOutboxRecord r = DeviceOutboxRecord.builder()
+                        .deviceId(rs.getString("device_id"))
+                        .createdAt((LocalDateTime) rs.getObject("created_at"))
+                        .status(rs.getByte("status"))
+                        .sentAt((LocalDateTime) rs.getObject("sent_at"))
+                        .attempts(rs.getInt("attempts"))
+                        .lastError(rs.getString("last_error"))
+                        .build();
                 records.add(r);
             }
         } catch (SQLException e) {
@@ -91,6 +92,20 @@ public class OutboxRepository {
             stmt.execute();
         } catch (SQLException e) {
             throw new RuntimeException("Failed to increment attempts", e);
+        }
+    }
+
+    public long countPending() {
+        String sql = "SELECT count() FROM device_outbox WHERE status = 0";
+        try (Connection conn = clickhouseDataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                return rs.getLong(1);
+            }
+            return 0;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to count pending outbox records", e);
         }
     }
 

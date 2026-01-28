@@ -1,10 +1,12 @@
 package com.slf4u0.eventscollectorservice.outbox;
 
+import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
 @Data
+@Builder
 public class DeviceOutboxRecord {
 
     private String deviceId;

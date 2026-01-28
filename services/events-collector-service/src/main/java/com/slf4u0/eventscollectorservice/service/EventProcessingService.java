@@ -1,6 +1,7 @@
 package com.slf4u0.eventscollectorservice.service;
 
 import com.slf4u0.avro.DeviceEvent;
+import com.slf4u0.eventscollectorservice.metrics.AppMetrics;
 import com.slf4u0.eventscollectorservice.outbox.OutboxRepository;
 import com.slf4u0.eventscollectorservice.repository.DeviceEventRepository;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,7 @@ public class EventProcessingService {
 
     private final DeviceEventRepository deviceEventRepository;
     private final OutboxRepository outboxRepository;
+    private final AppMetrics metrics;
 
     public void processEvent(DeviceEvent event) {
         log.info("Processing event for deviceId: {}", event.getDeviceId());
@@ -25,6 +27,7 @@ public class EventProcessingService {
         outboxRepository.insert(event.getDeviceId());
         log.info("Added device to outbox for potential publishing.");
 
+        metrics.incrementEventsProcessed();
     }
 
 }
