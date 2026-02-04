@@ -1,0 +1,25 @@
+#spring:
+#  datasource:
+#    url: jdbc:clickhouse://localhost:8123/iot_analytics
+#    username: ch_user
+#    password: ch_pass
+#    driver-class-name: com.clickhouse.jdbc.ClickHouseDriver
+#
+#logging:
+#  level:
+#    com.slf4u0.eventscollectorservice: DEBUG
+
+spring:
+
+  test:
+    context:
+      cache:
+        maxSize: 1
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+logging:
+  level:
+    org.testcontainers: INFO

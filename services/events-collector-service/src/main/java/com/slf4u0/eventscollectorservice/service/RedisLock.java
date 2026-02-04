@@ -1,4 +1,4 @@
-package com.slf4u0.eventscollectorservice.outbox;
+package com.slf4u0.eventscollectorservice.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -26,16 +26,15 @@ public class RedisLock {
     public boolean isDevicePublished(String deviceId, int ttlSeconds) {
         Boolean exists = redisTemplate.opsForSet().isMember("published:devices", deviceId);
         if (Boolean.TRUE.equals(exists)) {
-            return true; // Already published
+            return true;
         }
 
-        // Atomically add and set TTL
         Long added = redisTemplate.opsForSet().add("published:devices", deviceId);
         if (added != null && added > 0) {
             redisTemplate.expire("published:devices", java.time.Duration.ofSeconds(ttlSeconds));
-            return false; // New device, not published yet
+            return false;
         }
-        return true; // Race condition: someone else added simultaneously
+        return true;
     }
 
 }

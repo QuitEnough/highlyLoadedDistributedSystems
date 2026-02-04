@@ -1,11 +1,11 @@
 package com.slf4u0.eventscollectorservice;
 
 import com.slf4u0.eventscollectorservice.metrics.AppMetrics;
-import com.slf4u0.eventscollectorservice.outbox.DeviceOutboxRecord;
-import com.slf4u0.eventscollectorservice.outbox.OutboxProcessor;
-import com.slf4u0.eventscollectorservice.outbox.OutboxRepository;
-import com.slf4u0.eventscollectorservice.outbox.RedisLock;
+import com.slf4u0.eventscollectorservice.model.DeviceOutboxRecord;
 import com.slf4u0.eventscollectorservice.producer.DeviceIdPublisher;
+import com.slf4u0.eventscollectorservice.repository.OutboxRepository;
+import com.slf4u0.eventscollectorservice.service.OutboxProcessor;
+import com.slf4u0.eventscollectorservice.service.RedisLock;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -50,19 +50,14 @@ public class OutboxProcessorTest {
         when(redisLock.tryLock(any(), any(), anyLong())).thenReturn(true);
         when(redisLock.isDevicePublished("device-123", 3600)).thenReturn(false);
 
-        // when
         processor.processOutbox();
 
-        // then
         verify(deviceIdPublisher).sendDeviceId("device-123");
-        // markAsSent будет вызван внутри sendDeviceId → сложно проверить в unit-тесте
-        // но мы проверим, что не было попытки повторной отправки
         verify(outboxRepository, never()).incrementAttempts(any(), any());
     }
 
     @Test
     public void shouldSkipAlreadyPublishedDevice() {
-        // given
         DeviceOutboxRecord record = DeviceOutboxRecord.builder()
                 .deviceId("device-456")
                 .status((byte) 0)
@@ -72,14 +67,12 @@ public class OutboxProcessorTest {
 
         when(outboxRepository.findNewRecords(100)).thenReturn(List.of(record));
         when(redisLock.tryLock(any(), any(), anyLong())).thenReturn(true);
-        when(redisLock.isDevicePublished("device-456", 3600)).thenReturn(true); // уже опубликован
+        when(redisLock.isDevicePublished("device-456", 3600)).thenReturn(true);
 
-        // when
         processor.processOutbox();
 
-        // then
         verify(deviceIdPublisher, never()).sendDeviceId(any());
-        verify(outboxRepository).markAsSent("device-456"); // предполагаем, что помечаем как SENT
+        verify(outboxRepository).markAsSent("device-456");
     }
 
 }

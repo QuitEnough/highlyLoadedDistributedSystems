@@ -7,7 +7,12 @@ plugins {
 
 group = 'com.slf4u0'
 version = "$appVersion"
-sourceCompatibility = "$javaLanguageVersion"
+
+java{
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of("$javaLanguageVersion"))
+    }
+}
 
 repositories {
     mavenCentral()
@@ -34,14 +39,15 @@ dependencies {
     annotationProcessor "org.projectlombok:lombok:$lombokVersion"
 
     testImplementation "org.springframework.boot:spring-boot-starter-test"
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation "org.junit.jupiter:junit-jupiter:$junitJupiterVersion"
     testImplementation "org.springframework.kafka:spring-kafka-test"
     testImplementation "org.testcontainers:testcontainers:$testcontainersVersion"
     testImplementation "org.testcontainers:junit-jupiter:$testcontainersVersion"
     testImplementation "org.testcontainers:kafka:$testcontainersVersion"
     testImplementation "org.testcontainers:clickhouse:$testcontainersVersion"
+    runtimeOnly 'org.postgresql:postgresql'
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
-
     testCompileOnly "org.projectlombok:lombok:$lombokVersion"
     testAnnotationProcessor "org.projectlombok:lombok:$lombokVersion"
 }

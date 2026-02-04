@@ -1,7 +1,8 @@
-package com.slf4u0.eventscollectorservice.outbox;
+package com.slf4u0.eventscollectorservice.service;
 
 import com.slf4u0.eventscollectorservice.metrics.AppMetrics;
 import com.slf4u0.eventscollectorservice.producer.DeviceIdPublisher;
+import com.slf4u0.eventscollectorservice.repository.OutboxRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -26,17 +27,16 @@ public class OutboxProcessor {
         try {
             var records = outboxRepository.findNewRecords(100);
             for (var record : records) {
-                if (!redisLock.isDevicePublished(record.getDeviceId(), 3600)) {
+                if (!redisLock.isDevicePublished(record.deviceId(), 3600)) {
                     try {
-                        deviceIdPublisher.sendDeviceId(record.getDeviceId());
-                        outboxRepository.markAsSent(record.getDeviceId());
+                        deviceIdPublisher.sendDeviceId(record.deviceId());
+                        outboxRepository.markAsSent(record.deviceId());
                     } catch (Exception e) {
-                        outboxRepository.incrementAttempts(record.getDeviceId(), e.getMessage());
+                        outboxRepository.incrementAttempts(record.deviceId(), e.getMessage());
                         metrics.incrementOutboxFail();
                     }
                 } else {
-                    // Device already published, mark as sent to avoid reprocessing
-                    outboxRepository.markAsSent(record.getDeviceId());
+                    outboxRepository.markAsSent(record.deviceId());
                     metrics.incrementEventsDuplicates();
                 }
             }

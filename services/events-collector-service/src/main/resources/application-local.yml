@@ -1,19 +1,96 @@
 spring:
-  kafka:
-    config:
-      activate:
-        on-profile: local
-    bootstrap-servers: localhost:9092
-    consumer:
-      properties:
-        schema.registry.url: http://localhost:8081
-    producer:
-      bootstrap-servers: kafka:29092
+  config:
+    activate:
+      on-profile: local
 
+  application:
+    name: events-collector-service
   data:
     redis:
       host: localhost
       port: 6379
+      password: ${REDIS_PASSWORD:redis_pass}
+      timeout: 2000ms
+      connect-timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: events-collector
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 100
+      fetch-min-size: 1024
+      fetch-max-wait: 500
+      properties:
+        schema.registry.url: http://localhost:8081
+        specific.avro.reader: true
+        isolation.level: read_committed
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+
+    producer:
+      acks: all
+      retries: 3
+      enable-idempotence: true
+      compression-type: snappy
+      batch-size: 16384
+      linger-ms: 20
+      properties:
+        schema.registry.url: http://localhost:8081
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+
+    listener:
+      ack-mode: record
+      concurrency: 3  # ← увеличиваем для производительности
+      poll-timeout: 10000
+      missing-topics-fatal: false
+
+
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/${POSTGRES_DB:appdb}
+    username: ${POSTGRES_USER:appuser}
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      validation-timeout: 5000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+  management:
+    server:
+      port: 8091
+    endpoints:
+      web:
+        exposure:
+          include: health,metrics,prometheus,info,env,configprops
+    endpoint:
+      health:
+        show-details: always
+        probes:
+          enabled: true
+      prometheus:
+        enabled: true
 
 clickhouse:
-  url: jdbc:clickhouse://localhost:${CLICKHOUSE_PORT}/${CLICKHOUSE_DB}
+  url: jdbc:clickhouse://localhost:8123/${CLICKHOUSE_DB:iot_analytics}
+  username: ${CLICKHOUSE_USER:ch_user}
+  password: ${CLICKHOUSE_PASSWORD:ch_pass}
+  connection-timeout: 5000
+  socket-timeout: 30000
+
+server:
+  port: 0

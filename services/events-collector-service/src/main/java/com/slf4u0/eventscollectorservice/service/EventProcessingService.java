@@ -2,8 +2,8 @@ package com.slf4u0.eventscollectorservice.service;
 
 import com.slf4u0.avro.DeviceEvent;
 import com.slf4u0.eventscollectorservice.metrics.AppMetrics;
-import com.slf4u0.eventscollectorservice.outbox.OutboxRepository;
 import com.slf4u0.eventscollectorservice.repository.DeviceEventRepository;
+import com.slf4u0.eventscollectorservice.repository.OutboxRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,7 +23,6 @@ public class EventProcessingService {
         deviceEventRepository.save(event);
         log.info("Saved event to device_events table.");
 
-        // Always add to outbox - deduplication will be handled during outboxing
         outboxRepository.insert(event.getDeviceId());
         log.info("Added device to outbox for potential publishing.");
 

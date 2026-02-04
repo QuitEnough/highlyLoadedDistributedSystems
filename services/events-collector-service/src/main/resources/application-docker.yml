@@ -2,21 +2,63 @@ spring:
   config:
     activate:
       on-profile: docker
+
   kafka:
-    bootstrap-servers: kafka:29092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVER:PLAINTEXT://kafka:29092}
+
     consumer:
+      group-id: events-collector-${random.uuid}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 100
+      fetch-min-size: 1024
+      fetch-max-wait: 500
       properties:
-        schema.registry.url: ${SCHEMA_REGISTRY_URL_DOCKER}
+        schema.registry.url: ${SCHEMA_REGISTRY_URL_DOCKER:http://schema-registry:8081}
+        specific.avro.reader: true
+        isolation.level: read_committed
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+
     producer:
-      bootstrap-servers: kafka:29092
+      acks: all
+      retries: 3
+      enable-idempotence: true
+      compression-type: snappy
+      batch-size: 16384
+      linger-ms: 20
+      properties:
+        schema.registry.url: ${SCHEMA_REGISTRY_URL_DOCKER:http://schema-registry:8081}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+    listener:
+      ack-mode: record
+      concurrency: 3
 
   data:
     redis:
       host: redis
       port: 6379
+      password: ${REDIS_PASSWORD}
+      timeout: 2000ms
+      client-name: events-collector-service
 
-clickhouse:
-  url: jdbc:clickhouse://clickhouse:${CLICKHOUSE_PORT}/${CLICKHOUSE_DB}
+  datasource:
+    url: jdbc:postgresql://postgres:5432/${POSTGRES_DB:appdb}
+    username: ${POSTGRES_USER:appuser}
+    password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      validation-timeout: 5000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      pool-name: OutboxHikariPool
+
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
 
 management:
   server:
@@ -24,17 +66,18 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,metrics
+        include: health,metrics,prometheus,info,env,configprops
   endpoint:
     health:
       show-details: always
-  tracing:
-    sampling:
-      probability: 1.0
-  otlp:
-    endpoint: http://alloy:4318
-    protocol: http/protobuf
-    metrics:
-      export:
-        url: http://alloy:4318/v1/metrics
-        step: 1m
+      probes:
+        enabled: true
+    prometheus:
+      enabled: true
+
+clickhouse:
+  url: jdbc:clickhouse://clickhouse:8123/${CLICKHOUSE_DB:iot_analytics}
+  username: ${CLICKHOUSE_USER:ch_user}
+  password: ${CLICKHOUSE_PASSWORD:ch_pass}
+  connection-timeout: 5000
+  socket-timeout: 30000

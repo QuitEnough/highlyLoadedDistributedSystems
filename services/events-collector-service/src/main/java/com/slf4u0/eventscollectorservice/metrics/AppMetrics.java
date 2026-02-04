@@ -1,6 +1,6 @@
 package com.slf4u0.eventscollectorservice.metrics;
 
-import com.slf4u0.eventscollectorservice.outbox.OutboxRepository;
+import com.slf4u0.eventscollectorservice.repository.OutboxRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 public class AppMetrics {
 
     private final Counter eventsProcessedTotal;
-    private final Counter eventsDuplicatesTotal; // interpreted as "already published devices"
+    private final Counter eventsDuplicatesTotal;
     private final Counter outboxPublishSuccessTotal;
     private final Counter outboxPublishFailTotal;
 
@@ -48,7 +48,6 @@ public class AppMetrics {
         outboxPublishFailTotal.increment();
     }
 
-    // Метод для регистрации Gauge outbox.pending.count
     public void registerOutboxPendingGauge(MeterRegistry registry, OutboxRepository outboxRepository) {
         Gauge.builder("outbox.pending.count", outboxRepository::countPending)
                 .description("Current count of pending records in the outbox")
