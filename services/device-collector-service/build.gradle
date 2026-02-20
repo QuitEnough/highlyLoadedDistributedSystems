@@ -7,7 +7,12 @@ plugins {
 
 group = 'com.slf4u0'
 version = "$appVersion"
-sourceCompatibility = "$javaLanguageVersion"
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of("$javaLanguageVersion"))
+    }
+}
 
 repositories {
     mavenCentral()
@@ -17,47 +22,53 @@ repositories {
 }
 
 dependencies {
-    implementation "org.springframework.boot:spring-boot-starter-web"
-    implementation "org.springframework.boot:spring-boot-starter-actuator"
-    implementation "org.springframework.kafka:spring-kafka"
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation("org.apache.shardingsphere:shardingsphere-jdbc-core:$shardingsphereVersion") {
+        exclude group: 'org.glassfish.jaxb', module: 'jaxb-runtime'
+        exclude group: 'org.glassfish.jaxb', module: 'jaxb-core'
+        exclude group: 'jakarta.xml.bind', module: 'jakarta.xml.bind-api'
+    }
+
+    implementation 'javax.xml.bind:jaxb-api:2.3.1'
+    implementation 'com.sun.xml.bind:jaxb-impl:2.3.9'
+    implementation 'com.sun.xml.bind:jaxb-core:2.3.0.1'
+    implementation 'org.glassfish.jaxb:jaxb-runtime:4.0.5'
+
+    implementation "org.springframework.boot:spring-boot-starter-jdbc"
+    implementation 'org.springframework.kafka:spring-kafka'
     implementation "io.confluent:kafka-avro-serializer:$kafkaAvroSerializerVersion"
     implementation "org.apache.avro:avro:$avroVersion"
-    implementation "org.springframework.boot:spring-boot-starter-data-redis"
-    implementation "com.clickhouse:clickhouse-jdbc:$clickhouseJdbcVersion"
-    implementation "org.springframework.boot:spring-boot-starter-jdbc"
 
     implementation "io.micrometer:micrometer-tracing-bridge-otel"
     implementation "io.opentelemetry:opentelemetry-exporter-otlp"
 
-    runtimeOnly "net.logstash.logback:logstash-logback-encoder:$logstashEncoderVersion"
     compileOnly "org.projectlombok:lombok:$lombokVersion"
+    runtimeOnly 'org.postgresql:postgresql'
     annotationProcessor "org.projectlombok:lombok:$lombokVersion"
 
-    testImplementation "org.springframework.boot:spring-boot-starter-test"
-    testImplementation "org.junit.jupiter:junit-jupiter:$junitJupiterVersion"
-    testImplementation "org.springframework.kafka:spring-kafka-test"
-    testImplementation "org.testcontainers:testcontainers:$testcontainersVersion"
-    testImplementation "org.testcontainers:junit-jupiter:$testcontainersVersion"
-    testImplementation "org.testcontainers:kafka:$testcontainersVersion"
-    testImplementation "org.testcontainers:clickhouse:$testcontainersVersion"
-    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:kafka'
+    testImplementation 'org.testcontainers:postgresql'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testCompileOnly "org.projectlombok:lombok:$lombokVersion"
     testAnnotationProcessor "org.projectlombok:lombok:$lombokVersion"
 }
 
-tasks.named('test') {
-    useJUnitPlatform()
-    finalizedBy jacocoTestReport
+tasks.named('bootJar') {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-apply plugin: 'jacoco'
+tasks.named('jar') {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
 
-jacocoTestReport {
-    dependsOn test
-    reports {
-        xml.required = true
-        html.required = true
-    }
+tasks.named('test') {
+    useJUnitPlatform()
 }
 
 avro {

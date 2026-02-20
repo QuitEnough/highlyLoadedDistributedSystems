@@ -1,0 +1,56 @@
+dataSources:
+  shard0_master:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: org.postgresql.Driver
+    jdbcUrl: jdbc:postgresql://localhost:5435/app_db_0
+    username: test
+    password: test
+  shard0_replica:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: org.postgresql.Driver
+    jdbcUrl: jdbc:postgresql://localhost:5436/app_db_0
+    username: test
+    password: test
+  shard1_master:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: org.postgresql.Driver
+    jdbcUrl: jdbc:postgresql://localhost:5437/app_db_1
+    username: test
+    password: test
+  shard1_replica:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: org.postgresql.Driver
+    jdbcUrl: jdbc:postgresql://localhost:5438/app_db_1
+    username: test
+    password: test
+
+rules:
+  - !READWRITE_SPLITTING
+    dataSources:
+      shard0:
+        writeDataSourceName: shard0_master
+        readDataSourceNames: [ shard0_replica ]
+        loadBalancerName: round_robin
+      shard1:
+        writeDataSourceName: shard1_master
+        readDataSourceNames: [ shard1_replica ]
+        loadBalancerName: round_robin
+    loadBalancers:
+      round_robin:
+        type: ROUND_ROBIN
+
+  - !SHARDING
+    tables:
+      devices:
+        actualDataNodes: shard${0..1}.devices
+        tableStrategy:
+          none:
+        databaseStrategy:
+          standard:
+            shardingColumn: device_id
+            shardingAlgorithmName: deviceid_hash_mod
+    shardingAlgorithms:
+      deviceid_hash_mod:
+        type: INLINE
+        props:
+          algorithm-expression: shard${Math.abs(device_id.hashCode()) % 2}

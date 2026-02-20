@@ -19,8 +19,12 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+      kafka-init-events:
+        condition: service_completed_successfully
       schema-registry:
         condition: service_healthy
+      schema-init-deviceEvent:
+        condition: service_completed_successfully
       clickhouse:
         condition: service_healthy
       redis:
@@ -31,6 +35,76 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  device-collector-service:
+    build:
+      context: ..
+      dockerfile: services/device-collector-service/Dockerfile
+    container_name: device-collector-service
+    ports:
+      - "8093:8093"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      # Kafka
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_KAFKA_CONSUMER_PROPERTIES_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      SPRING_KAFKA_PRODUCER_PROPERTIES_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      # ShardingSphere
+      SPRING_DATASOURCE_URL: jdbc:shardingsphere:classpath:sharding-docker.yml
+      # 🔴 Отключаем авто-конфигурацию Flyway
+      SPRING_AUTOCONFIGURE_EXCLUDE: org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
+      SPRING_FLYWAY_ENABLED: "false"
+#      POSTGRES_DEVICES_DB_HOST_DOCKER: ${POSTGRES_DEVICES_DB_HOST_DOCKER}
+#      POSTGRES_DEVICES_DB_PORT_DOCKER: ${POSTGRES_DEVICES_DB_PORT_DOCKER}
+#      POSTGRES_DEVICES_DB_NAME: ${POSTGRES_DEVICES_DB_NAME}
+#      POSTGRES_DEVICES_DB_USERNAME: ${POSTGRES_DEVICES_DB_USERNAME}
+#      POSTGRES_DEVICES_DB_PASSWORD: ${POSTGRES_DEVICES_DB_PASSWORD}
+    networks:
+      - app-network
+    depends_on:
+      db1:
+        condition: service_healthy
+      db2:
+        condition: service_healthy
+      db3:
+        condition: service_healthy
+      db4:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init-devices:
+        condition: service_completed_successfully
+      schema-registry:
+        condition: service_healthy
+      schema-init-device:
+        condition: service_completed_successfully
+#      postgres-devices:
+#        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8093/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+
+#  postgres-devices:
+#    image: postgres:16-alpine
+#    container_name: postgres-devices
+#    restart: unless-stopped
+#    ports:
+#      - "${POSTGRES_DEVICES_DB_PORT_LOCAL}:5432"
+#    volumes:
+#      - postgres-devices:/var/lib/postgresql/data
+#    environment:
+#      POSTGRES_USER: ${POSTGRES_DEVICES_DB_USERNAME}
+#      POSTGRES_PASSWORD: ${POSTGRES_DEVICES_DB_PASSWORD}
+#      POSTGRES_DB: ${POSTGRES_DEVICES_DB_NAME}
+#    healthcheck:
+#      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -p 5432"]
+#      interval: 10s
+#      timeout: 5s
+#      retries: 5
+#      start_period: 15s
 
   postgres:
     image: postgres:16-alpine
@@ -271,9 +345,9 @@ services:
       timeout: 5s
       retries: 5
 
-  schema-init:
+  schema-init-deviceEvent:
     image: alpine:3.23.2
-    container_name: schema-init
+    container_name: schema-init-deviceEvent
     depends_on:
       schema-registry:
         condition: service_healthy
@@ -294,6 +368,32 @@ services:
         echo 'Schema registration attempt finished'
       "
 
+  # Инициализация схемы для device-collector-service
+  schema-init-device:
+    image: alpine:3.23.2
+    container_name: schema-init-device
+    depends_on:
+      schema-registry:
+        condition: service_healthy
+    volumes:
+      - ../services/device-collector-service/src/main/avro:/schemas:ro
+#    networks:
+#      - app-network
+    command: >
+      sh -c "
+      apk add --no-cache curl jq &&
+      echo 'Waiting for Schema Registry...' &&
+      sleep 10;
+      if [ ! -f /schemas/Device.avsc ]; then
+      echo 'Error: /schemas/Device.avsc not found';
+      exit 1;
+      fi;
+      SCHEMA_CONTENT=\$$(jq -Rs '.' /schemas/Device.avsc);
+      PAYLOAD=\"{\\\"schema\\\": \$$SCHEMA_CONTENT}\";
+      curl -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' -d \"\$$PAYLOAD\" http://schema-registry:8081/subjects/devices-value/versions;
+      echo 'Device schema registration attempt finished'
+      "
+
   kafka-exporter:
     image: danielqsj/kafka-exporter:v1.7.0
     container_name: kafka-exporter
@@ -307,9 +407,9 @@ services:
       kafka:
         condition: service_healthy
 
-  kafka-init:
+  kafka-init-events:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: kafka-init
+    container_name: kafka-init-events
     depends_on:
       kafka:
         condition: service_healthy
@@ -319,6 +419,22 @@ services:
         kafka-topics --create --bootstrap-server kafka:29092 --topic devices --partitions 3 --replication-factor 1 &&
         echo 'Topics created'
       "      
+
+  kafka-init-devices:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka_init-devices
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command: |
+      bash -c "
+        echo 'Creating Kafka topics...' &&
+      kafka-topics --create --bootstrap-server kafka:29092 --topic devices --partitions 3 --replication-factor 1 --if-not-exists &&
+      kafka-topics --create --bootstrap-server kafka:29092 --topic devices-dlt --partitions 3 --replication-factor 1 --if-not-exists &&
+      kafka-topics --create --bootstrap-server kafka:29092 --topic events --partitions 3 --replication-factor 1 --if-not-exists &&
+      echo 'Topics created successfully:' &&
+      kafka-topics --list --bootstrap-server kafka:29092
+      "          
 
   prometheus:
     image: prom/prometheus:v3.0.0
@@ -439,8 +555,102 @@ services:
       timeout: 5s
       retries: 10
 
+  # ==================== PostgreSQL Shards ====================
+  db1:
+    image: postgres:16-alpine
+    container_name: shard0_master
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_USER: test
+      POSTGRES_DB: app_db_0
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5435:5432"
+    volumes:
+      - shard0_master_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d app_db_0"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+
+  db2:
+    image: postgres:16-alpine
+    container_name: shard0_replica
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_USER: test
+      POSTGRES_DB: app_db_0
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5436:5432"
+    volumes:
+      - shard0_replica_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d app_db_0"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+
+  db3:
+    image: postgres:16-alpine
+    container_name: shard1_master
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_USER: test
+      POSTGRES_DB: app_db_1
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5437:5432"
+    volumes:
+      - shard1_master_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d app_db_1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+
+  db4:
+    image: postgres:16-alpine
+    container_name: shard1_replica
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_USER: test
+      POSTGRES_DB: app_db_1
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5438:5432"
+    volumes:
+      - shard1_replica_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d app_db_1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  postgres-devices:
   minio_data:
   keycloak_postgres_data:
   clickhouse_data:
@@ -448,3 +658,11 @@ volumes:
   kafka_data:
   tempo_data:
   grafana_data:
+  shard0_master_data:
+  shard0_replica_data:
+  shard1_master_data:
+  shard1_replica_data:
+
+networks:
+  app-network:
+    driver: bridge

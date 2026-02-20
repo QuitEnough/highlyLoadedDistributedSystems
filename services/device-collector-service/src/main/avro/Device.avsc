@@ -3,9 +3,9 @@
   "name": "Device",
   "namespace": "com.slf4u0.avro",
   "fields": [
-    {"name": "deviceId",   "type": "string"},
+    {"name": "deviceId", "type": "string"},
     {"name": "deviceType", "type": "string"},
-    {"name": "createdAt",  "type": "long"},
-    {"name": "meta",       "type": "string"}
+    {"name": "createdAt", "type": "long"},
+    {"name": "meta", "type": "string"}
   ]
 }
