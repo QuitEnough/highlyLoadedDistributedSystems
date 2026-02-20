@@ -847,3 +847,10 @@ https://gitlab.proselyte.net/ourcode-iot-quebec/slf4u0/-/merge_requests/2/diffs?
 
 ###  **следующее сообщение:**
 внесла некоторые изменения в emulator-service и добавила описание проблемы с testcontainer, и запуском emulator-service: https://gitlab.proselyte.net/ourcode-iot-quebec/slf4u0/-/merge_requests/2/diffs?commit_id=d0280c70d0ff59da75306231495cc89e57a2a8c2
+
+---
+
+## 👨‍🏫 **Ответ от преподавателя:**
+Привет, Яна!
+
+Отправил пример рабочего проекта и возвращаю в работу по системе.
