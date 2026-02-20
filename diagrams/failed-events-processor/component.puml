@@ -1,0 +1,70 @@
+@startuml Component Diagram
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+Container_Boundary(fep_boundary, "failed-events-processor", "Spring Boot 3.5 + Java 24") {
+    Component(kafka_consumer, "Kafka DLT Consumer", "Spring Kafka @KafkaListener", "Подписка на dlt-topic, десериализация Avro/JSON")
+    Component(avro_deserializer, "Avro/JSON Deserializer", "Confluent + Jackson", "Байты Kafka -> InternalErrorEvent DTO")
+    Component(error_enricher, "Error Enricher", "Service Layer", "Добавление errorSource, reason, receivedAt")
+    Component(json_formatter, "JSON Formatter", "Jackson ObjectMapper", "Формирование JSON по шаблону модуля 5")
+    Component(filename_generator, "Filename Generator", "Utility Service", "Формат: yyyy-MM-dd-HH-mm_service_errorType.json")
+    Component(minio_client, "MinIO S3 Client", "MinIO Java SDK", "PUT в bucket 'failed-events', retry 3x")
+    Component(metrics_exporter, "Metrics Exporter", "Spring Actuator + Micrometer+ OpenTelemetry", "Экспорт метрик в Alloy")
+    Component(error_handler, "Error Handler", "Resilience4j / Spring Retry", "Обработка сбоев, логирование")
+}
+
+Rel(kafka_consumer, avro_deserializer, "byte[]", "сырые байты")
+Rel(avro_deserializer, error_enricher, "InternalErrorEvent DTO", "Java Object")
+Rel(error_enricher, json_formatter, "EnrichedErrorEvent", "Java Object")
+Rel(json_formatter, filename_generator, "JSON + metadata", "String")
+Rel(filename_generator, minio_client, "PutObjectArgs", "S3 request")
+Rel(minio_client, metrics_exporter, "result + latency", "metrics update")
+Rel(error_handler, kafka_consumer, "exception handling", "retry logic")
+Rel(error_handler, minio_client, "retry on MinioException", "exponential backoff")
+
+System_Ext(kafka_ext, "Kafka DLT Topic", "Apache Kafka", "Единый dlt-topic")
+System_Ext(schema_reg, "Schema Registry", "Confluent", "Avro-схемы")
+System_Ext(minio_ext, "MinIO", "S3-compatible Storage", "Bucket: failed-events")
+System_Ext(alloy_ext, "Grafana Alloy", "OpenTelemetry Collector", "Сбор метрик/логов/трейсов со всех сервисов")
+
+Rel(kafka_ext, kafka_consumer, "DLT messages", "Kafka Protocol Avro/JSON")
+Rel(avro_deserializer, schema_reg, "GET schema", "HTTP REST")
+Rel(minio_client, minio_ext, "PUT /failed-events/{filename}", "S3 API")
+Rel(alloy_ext, metrics_exporter, "Scrape /actuator/prometheus", "HTTP GET (Prometheus format)")
+
+note right of metrics_exporter
+  Экспортирует метрики в Prometheus-format
+  через Spring Actuator + Micrometer.
+
+  Alloy scrapes этот endpoint и затем
+  forwards в Prometheus via remote_write.
+
+  Логи и трейсы: OTLP push to Alloy
+  (отдельные endpoints /actuator/otel)
+end note
+
+note right of filename_generator
+  Формат имени файла:
+  yyyy-MM-dd-HH-mm_service_errorType.json
+
+  Пример:
+  2025-07-23-14-55_device-collector_NullPointerException.json
+
+  timestamp: из failedEvent.timestamp
+  (время возникновения ошибки)
+end note
+
+note right of minio_client
+  Retry policy:
+  - Max 3 attempts
+  - Backoff: 1s, 2s, 3s
+  - Log failures
+  - No auto-replay
+end note
+
+note bottom of fep_boundary
+  Восстановление: вручную или внешний scheduler
+  Bucket: failed-events
+  Другие бакеты MinIO: logs, metrics, traces (observability)
+end note
+
+@enduml

@@ -36,6 +36,7 @@ System_Boundary(iot_platform, "IoT Monitoring Platform") {
     Container(events_collector, "events-collector-service", "Spring Boot 3.5", "Сбор и обработка событий из Kafka")
     Container(device_collector, "device-collector-service", "Spring Boot 3.5", "Сбор и обработка устройств из Kafka с шардированием")
     Container(device_service, "device-service", "Spring Boot 3.5", "CRUD API для устройств")
+    Container(failed_events_processor, "failed-events-processor", "Spring Boot 3.5", "Обработка DLT-сообщений")
 }
 
 Rel(engineer, api_gateway, "HTTPS + JWT", "REST API")
@@ -64,6 +65,15 @@ Rel(device_service, redis, "Кэш (Cache-Aside)", "Redis Protocol")
 Rel(device_service, pg_shards, "Чтение данных (Read Model)", "JDBC/ShardingSphere")
 Rel(device_service, kafka, "Команды записи (Write Model)", "Kafka Producer")
 Rel(device_service, alloy, "Метрики, логи, трейсы", "OpenTelemetry (Micrometer/Actuator)")
+
+Rel(kafka, failed_events_processor, "Потребление из dlt-topic", "Kafka Consumer (Avro/JSON)")
+Rel(failed_events_processor, schema_registry, "Получение Avro-схемы", "HTTP REST")
+Rel(failed_events_processor, minio, "S3 PUT → bucket 'failed-events'", "MinIO SDK (Java)")
+Rel(failed_events_processor, alloy, "Метрики: processed_events_total, errors_total\nHealth: /actuator/health", "OpenTelemetry + Spring Actuator")
+
+Rel(loki, minio, "S3 PUT/GET → bucket 'logs'\n(loki-config.yaml)", "AWS S3 API")
+Rel(tempo, minio, "S3 PUT/GET → bucket 'traces'\n(tempo-config.yaml)", "AWS S3 API")
+Rel(prometheus, minio, "Thanos Sidecar → bucket 'metrics'\n(thanos-objstore.yaml)", "AWS S3 API")
 
 Rel(camunda, keycloak, "Аутентификация пользователей", "OIDC")
 Rel(camunda, postgres, "Хранение процессов", "JDBC")

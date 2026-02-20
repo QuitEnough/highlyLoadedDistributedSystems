@@ -1,0 +1,94 @@
+@startuml Sequence Diagram
+title Обработка DLT-сообщения: Kafka → MinIO
+skinparam sequenceMessageAlign center
+
+actor "Kafka Broker\ndlt-topic" as Kafka
+participant "failed-events-processor" as FEP
+participant "Deserializer" as DES
+participant "Error Enricher" as ENR
+participant "JSON Formatter" as JSON
+participant "Filename Generator" as FNG
+participant "MinIO Client" as MINIO
+database "MinIO Storage\nbucket: failed-events" as STORE
+participant "Metrics Exporter" as MET
+participant "Grafana Alloy" as ALLOY
+
+== 1. Получение сообщения из Kafka ==
+Kafka -> FEP: poll() из dlt-topic (Avro/JSON)
+activate FEP
+FEP -> DES: deserialize(bytes)
+activate DES
+DES --> FEP: InternalErrorEvent DTO\n{failedEvent, errorMeta, receivedAt}
+deactivate DES
+
+== 2. Обогащение и форматирование ==
+FEP -> ENR: enrich(dto, errorContext)
+activate ENR
+ENR --> FEP: EnrichedErrorEvent\n{failedEvent, errorMeta, receivedAt, schemaVersion}
+deactivate ENR
+
+FEP -> JSON: formatToJson(enrichedEvent)
+activate JSON
+JSON --> FEP: JSON string schema v1
+deactivate JSON
+
+== 3. Генерация имени файла (НОВЫЙ ФОРМАТ) ==
+FEP -> FNG: generateFileName(\ntimestamp=failedEvent.timestamp,\nservice=errorMeta.errorSource,\neventType=failedEvent.type)
+activate FNG
+FNG --> FEP: "yyyy-MM-dd-HH-mm_service_errorType.json"
+deactivate FNG
+
+note right of FNG
+  Пример имени файла:
+  2025-07-23-14-55_device-collector_NullPointerException.json
+
+  Поля:
+  - timestamp: из failedEvent.timestamp
+    (время возникновения ошибки)
+  - service: из errorMeta.errorSource
+  - eventType: из failedEvent.type
+
+  UUID не используется (по требованиям)
+end note
+
+== 4. Сохранение в MinIO с retry-логикой ==
+loop max 3 attempts
+    FEP -> MINIO: putObject(\n  bucket="failed-events",\n  object=filename,\n  stream=JSON,\n  contentType=application/json)
+    activate MINIO
+    alt успех
+        MINIO -> STORE: PUT /failed-events/filename
+        STORE --> MINIO: 200 OK
+        MINIO --> FEP: ObjectWriteResponse (success)
+        deactivate MINIO
+        break
+    else MinioException / IOException
+        MINIO --> FEP: Exception (timeout/auth/network)
+        deactivate MINIO
+        FEP -> FEP: log.warn("Attempt {}/3 failed", attempt)
+        FEP -> FEP: Thread.sleep(1000 * attempt)\n// exponential backoff: 1s, 2s, 3s
+    end
+end
+
+== 5. Финализация обработки ==
+alt сохранение успешно
+    FEP -> MET: increment(processed_events_total)
+    FEP -> FEP: log.info("Saved event: filename")
+    FEP --> Kafka: commit offset (ack)
+else все попытки исчерпаны
+    FEP -> MET: increment(save_errors_total)
+    FEP -> FEP: log.error("Failed after 3 retries", exception)
+    note right of FEP
+        Негативный сценарий:
+        - Файл не сохранён
+        - Offset не коммитится (или коммитится с флагом)
+        - Событие остаётся в Kafka для ручного разбора
+        - Автоматический replay НЕ реализован
+      end note
+end
+deactivate FEP
+
+== 6. Сбор observability (Alloy) ==
+ALLOY -> MET: GET /actuator/prometheus
+MET --> ALLOY: Prometheus-format metrics
+
+@enduml
