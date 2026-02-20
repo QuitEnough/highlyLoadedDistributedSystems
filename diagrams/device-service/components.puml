@@ -1,0 +1,44 @@
+@startuml
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram: device-service
+
+Container_Boundary(device_service, "device-service") {
+    Component(controller, "DeviceController", "Spring REST", "Обработка HTTP запросов, Swagger UI, DTO Validation")
+    Component(dto_mapper, "DTO Mapper", "MapStruct", "Преобразование Entity <-> DTO")
+    Component(service, "DeviceService", "Business Logic", "Валидация, Идемпотентность, Логика")
+    Component(read_repo, "DeviceReadRepository", "Spring Data JPA", "Чтение из PG Shards (через ShardingSphere)")
+    Component(write_client, "CommandKafkaClient", "Spring Kafka", "Отправка команд на запись")
+    Component(cache_manager, "CacheManager", "Spring Cache", "Управление кэшем Redis")
+    Component(security_config, "SecurityConfig", "Spring Security", "OAuth2 Resource Server Config")
+    Component(metrics_aspect, "MetricsAspect", "AOP/Micrometer", "Сбор метрик времени выполнения")
+    Component(logging_aspect, "LoggingAspect", "AOP", "Генерация Trace-ID, MDC Context")
+    Component(actuator, "Actuator Endpoint", "Spring Boot", "/actuator/prometheus, /health")
+}
+
+System_Ext(api_gateway, "API Gateway", "Внешний вход (Route)")
+System_Ext(keycloak, "Keycloak", "OIDC Provider")
+System_Ext(redis, "Redis", "Distributed Cache")
+System_Ext(kafka, "Kafka", "Command Topic")
+System_Ext(pg, "PostgreSQL", "Read Replica/Shards")
+System_Ext(alloy, "Grafana Alloy", "Observability Collector")
+
+Rel(api_gateway, controller, "HTTPS Request + JWT", "REST")
+Rel(controller, security_config, "Защита эндпоинтов", "@PreAuthorize")
+Rel(controller, service, "Делегирование", "DTO")
+Rel(service, cache_manager, "Чтение/Запись кэша", "Cache-Aside")
+Rel(service, read_repo, "Чтение данных", "Entity")
+Rel(service, write_client, "Запись (Async)", "Command DTO")
+Rel(cache_manager, redis, "Синхронизация", "Redis CLI")
+Rel(service, dto_mapper, "Маппинг", "DTO <-> Entity")
+Rel(metrics_aspect, service, "Оберка методов", "Timer/Counter")
+Rel(logging_aspect, controller, "Установка Trace-ID", "MDC Context")
+Rel(security_config, keycloak, "Валидация JWT", "JWKS URI")
+Rel(actuator, alloy, "Scrape/Push Metrics", "Prometheus/OTLP")
+
+note right of service
+  Реализует идемпотентность
+  через проверку ключей в Redis
+  перед отправкой в Kafka
+end note
+@enduml

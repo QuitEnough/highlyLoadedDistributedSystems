@@ -6,34 +6,41 @@ System_Ext(iot_device, "IoT Device", "Внешнее устройство: да�
 
 System_Boundary(iot_platform, "IoT Monitoring Platform") {
 
+    ' --- Infrastructure ---
+    Container(api_gateway, "API Gateway", "Spring Cloud Gateway", "Единая точка входа, SSL, Rate Limiting, Роутинг")
+    Container(keycloak, "Keycloak", "Identity Server", "SSO/OAuth2 сервер")
+    Container(kafka, "Kafka", "Message Broker", "Шина событий, топики: events/dlt/device-id")
+    Container(schema_registry, "Schema Registry", "Confluent Schema Registry", "Управление Avro-схемами")
+    Container(redis, "Redis", "In-Memory Cache", "Кэш, Pub/Sub")
+    Container(camunda, "Camunda", "BPM Engine", "Движок workflow-процессов")
+    Container(minio, "MinIO", "Object Storage", "Хранение файлов (S3 API), DLT-ошибки")
     ContainerDb(postgres, "PostgreSQL", "Database", "Реляционная БД: устройства, команды, процессы")
     ContainerDb(keycloak_postgres, "Keycloak PostgreSQL", "Database", "Хранение пользователей Keycloak")
     ContainerDb(clickhouse, "ClickHouse", "NoSQL Database", "Хранилище телеметрии IoT")
     ContainerDb(pg_shards, "PostgreSQL Shards", "Database", "Шардированная БД устройств (Shard 0, Shard 1)")
 
-    Container(kafka, "Kafka", "Message Broker", "Шина событий, топики: events/dlt/device-id")
-    Container(redis, "Redis", "In-Memory Cache", "Кэш, Pub/Sub")
-    Container(minio, "MinIO", "Object Storage", "Хранение файлов (S3 API), DLT-ошибки")
-
-    Container(keycloak, "Keycloak", "Identity Server", "SSO/OAuth2 сервер")
-    Container(camunda, "Camunda", "BPM Engine", "Движок workflow-процессов")
-    Container(schema_registry, "Schema Registry", "Confluent Schema Registry", "Управление Avro-схемами")
-
+    ' --- Observability Stack ---
     Container(prometheus, "Prometheus", "Metrics Backend", "Хранит и анализирует метрики\n(получает только от Alloy)")
     Container(loki, "Loki", "Logging Backend", "Хранит и анализирует логи\n(получает только от Alloy)")
     Container(tempo, "Tempo", "Tracing Backend", "Хранит и анализирует трейсы\n(получает только от Alloy)")
     Container(grafana, "Grafana", "Dashboard UI", "Визуализация: метрики, логи, трейсы")
     Container(alloy, "Grafana Alloy", "OpenTelemetry Collector", "Собирает метрики, логи и трейсы")
 
+    ' --- Exporters ---
     Container(postgres_exporter, "Postgres Exporter", "Prometheus Exporter", "Читает статистику БД")
     Container(keycloak_postgres_exporter, "Keycloak Postgres Exporter", "Prometheus Exporter", "Читает статистику БД")
     Container(kafka_exporter, "Kafka Exporter", "Prometheus Exporter", "Собирает метрики из Kafka")
     Container(redis_exporter, "Redis Exporter", "Prometheus Exporter", "Преобразует Redis INFO в /metrics")
 
+    ' --- Microservices ---
     Container(events_collector, "events-collector-service", "Spring Boot 3.5", "Сбор и обработка событий из Kafka")
     Container(device_collector, "device-collector-service", "Spring Boot 3.5", "Сбор и обработка устройств из Kafka с шардированием")
+    Container(device_service, "device-service", "Spring Boot 3.5", "CRUD API для устройств")
 }
 
+Rel(engineer, api_gateway, "HTTPS + JWT", "REST API")
+Rel(api_gateway, device_service, "Маршрутизация запросов", "HTTP/Internal")
+Rel(api_gateway, keycloak, "Проверка токена (опционально)", "OIDC")
 Rel(iot_device, kafka, "Телеметрия (Avro)", "Kafka/Avro [ПЛАНИРУЕТСЯ]")
 Rel(engineer, grafana, "Мониторинг", "HTTP (дашборды)")
 Rel(engineer, keycloak, "Вход в систему", "Keycloak (OIDC)")
@@ -43,7 +50,6 @@ Rel(kafka, events_collector, "Потребление событий из топ�
 Rel(events_collector, schema_registry, "Получение Avro-схемы", "HTTP REST")
 Rel(events_collector, clickhouse, "INSERT device_events + device_outbox", "ClickHouse")
 Rel(events_collector, redis, "Дедупликация device_id\nSADD devices:seen <id>\nTTL = 1h", "Redis Set + EXPIRE")
-Rel(events_collector, alloy, "Метрики, логи, трейсы", "OpenTelemetry")
 Rel(events_collector, kafka, "Отправка в топик 'devices'", "Kafka produce")
 Rel(events_collector, alloy, "Метрики, логи, трейсы", "OpenTelemetry (Micrometer/Actuator)")
 
@@ -52,6 +58,12 @@ Rel(device_collector, schema_registry, "Получение Avro-схемы", "HT
 Rel(device_collector, pg_shards, "INSERT/UPDATE устройств (ShardingSphere-JDBC, UPSERT ON CONFLICT)", "JDBC")
 Rel(device_collector, kafka, "Отправка в Dead Letter Topic", "Kafka Producer (DLT)")
 Rel(device_collector, alloy, "Метрики, логи, трейсы", "OpenTelemetry (Micrometer/Actuator)")
+
+Rel(device_service, keycloak, "Валидация JWT (JWKS)", "HTTPS")
+Rel(device_service, redis, "Кэш (Cache-Aside)", "Redis Protocol")
+Rel(device_service, pg_shards, "Чтение данных (Read Model)", "JDBC/ShardingSphere")
+Rel(device_service, kafka, "Команды записи (Write Model)", "Kafka Producer")
+Rel(device_service, alloy, "Метрики, логи, трейсы", "OpenTelemetry (Micrometer/Actuator)")
 
 Rel(camunda, keycloak, "Аутентификация пользователей", "OIDC")
 Rel(camunda, postgres, "Хранение процессов", "JDBC")

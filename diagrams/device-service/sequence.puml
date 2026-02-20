@@ -1,0 +1,98 @@
+@startuml
+title Sequence Diagram: Device CRUD Operations (Module 4 Patterns)
+
+participant "Client (Engineer)" as Client
+participant "API Gateway" as Gateway
+participant "device-service" as Service
+participant "Keycloak" as Auth
+participant "Redis" as Cache
+participant "Kafka" as Broker
+participant "device-collector" as Collector
+participant "PostgreSQL" as DB
+participant "Grafana Alloy" as Alloy
+
+== Создание устройства (POST /devices) ==
+Client -> Gateway: POST /devices {data} + Auth: Bearer <JWT>
+activate Gateway
+Gateway -> Gateway: Генерация X-Request-ID: <trace-id>
+Gateway -> Auth: Валидация токена
+Auth --> Gateway: Valid
+Gateway -> Service: Forward Request\n[Headers: X-Request-ID=<trace-id>, Authorization=Bearer...]
+activate Service
+
+Service -> Service: Security Filter (JWT Verification)
+Service -> Service: Logging Aspect (MDC Put Trace-ID)
+Service -> Cache: GET idempotency:<Idempotency-Key>
+activate Cache
+alt Ключ найден
+    Cache --> Service: Возврат сохраненного ответа
+    Service --> Gateway: 200 OK (Результат из кэша)
+else Ключ не найден
+    Service -> Service: Валидация DTO (JSR-380 @Valid)
+
+    alt Ошибка валидации
+        Service --> Gateway: 400 Bad Request (RFC 7807)
+    else Валидно
+        Service -> Broker: Produce Command (device-create)
+        activate Broker
+        Broker --> Service: Ack
+        deactivate Broker
+
+        Service -> Cache: SET idempotency:<key> (TTL)
+        Cache --> Service: OK
+        deactivate Cache
+
+        Service -> Service: Логирование аудита (JSON)
+        Service --> Gateway: 202 Accepted (или 201 с Location)
+    end
+end
+deactivate Service
+Gateway --> Client: Response + X-Request-ID: <trace-id>
+deactivate Gateway
+
+par Сбор метрик (Background)
+    Service -> Alloy: Push: метрики (Micrometer), логи (stdout), трейсы (OTLP)
+end
+
+par Асинхронная обработка (device-collector)
+    Broker -> Collector: Consume: device-create
+    activate Collector
+    Collector -> DB: INSERT/UPSERT (ShardingSphere-JDBC)
+    activate DB
+    DB --> Collector: Success
+    deactivate DB
+    Collector -> Broker: Produce Event device-created {device_id, status}
+    deactivate Collector
+end
+
+== Получение устройства (GET /devices/{id}) ==
+Client -> Gateway: GET /devices/{id} + Auth: Bearer <JWT>
+activate Gateway
+Gateway -> Auth: Валидация JWT
+Auth --> Gateway: Valid
+Gateway -> Service: Forward + X-Request-ID=<trace-id>, Authorization=Bearer...
+activate Service
+
+Service -> Service: Security Filter (JWT Verification, опционально для GET)
+Service -> Cache: GET device:{id}
+activate Cache
+alt Cache Hit
+    Cache --> Service: DTO
+    Service --> Gateway: 200 OK (DTO)
+else Cache Miss
+    Service -> DB: SELECT device_id=? (Read via ShardingSphere)
+    activate DB
+    DB --> Service: Entity
+    deactivate DB
+    Service -> Service: Map Entity -> DTO (MapStruct)
+    Service -> Cache: SET device:{id} DTO (TTL)
+    Cache --> Service: OK
+    Service --> Gateway: 200 OK (DTO)
+end
+deactivate Service
+deactivate Cache
+Gateway --> Client: JSON Response + X-Request-ID: <trace-id>
+deactivate Gateway
+
+note right: Alloy агрегирует метрики (latency, error_rate)\nи логи с trace-id для Grafana/Loki
+@enduml
