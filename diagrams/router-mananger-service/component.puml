@@ -1,0 +1,53 @@
+@startuml Component_Diagram_Router_Manager
+!includeurl https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+System_Boundary(router_manager, "router-manager-service [Go 1.20+ | gRPC API]") {
+
+    Component(grpc_server, "gRPC Server", "grpc-go", "Обработка входящих gRPC-вызовов, middleware: auth, rate-limit, logging")
+    Component(proto_stubs, "Generated Stubs", "protoc-gen-go", "Автогенерированные интерфейсы из .proto")
+
+    Component(command_service, "Command Service", "Go Service", "Оркестрация команд: валидация, статусы, массовая рассылка, атомарность")
+    Component(router_service, "Router Service", "Go Service", "Управление роутерами: регистрация, last_seen_at, health")
+    Component(validation, "Validation", "go-playground/validator", "Валидация входных параметров")
+
+    Component(router_repo, "Router Repository", "pgx", "CRUD для таблицы routers")
+    Component(command_repo, "Command Repository", "pgx", "CRUD для таблицы commands, атомарные обновления статусов")
+    Component(tx_manager, "Transaction Manager", "pgxpool", "Управление транзакциями, retry-логика")
+
+    Component(logger, "Structured Logger", "slog", "JSON-логирование с контекстом: request_id, router_id, command_id")
+    Component(metrics, "Metrics Exporter", "prometheus/client_golang", "Метрики: command_sent_total, ack_latency_seconds, errors_total")
+    Component(security, "Security Middleware", "Custom", "IP Whitelist, mTLS verification, Rate Limiting, JWT validation для Admin")
+}
+
+Rel(grpc_server, proto_stubs, "Делегирует вызовы", "gRPC")
+Rel(proto_stubs, command_service, "Вызов бизнес-логики", "Go interface")
+Rel(proto_stubs, router_service, "Вызов бизнес-логики", "Go interface")
+Rel(command_service, validation, "Валидация", "struct tags")
+Rel(command_service, command_repo, "Сохранение/обновление команд", "pgx")
+Rel(command_service, router_repo, "Получение списка роутеров", "pgx")
+Rel(router_service, router_repo, "Обновление last_seen_at", "pgx")
+Rel(command_repo, tx_manager, "Атомарные операции", "BEGIN/COMMIT")
+Rel(router_repo, tx_manager, "Атомарные операции", "BEGIN/COMMIT")
+Rel(command_service, logger, "Логирование событий", "slog.Info/Error")
+Rel(command_service, metrics, "Экспорт метрик", "Prometheus format")
+Rel(grpc_server, security, "Проверка: IP, mTLS, rate-limit", "middleware")
+
+System_Ext(postgres, "PostgreSQL", "Хранение: routers, commands")
+System_Ext(api_gateway, "API Gateway", "Spring Cloud Gateway", "Маршрутизация Admin-запросов, OIDC/JWT")
+System_Ext(iot_device, "IoT Device (Router)", "Внешний роутер", "gRPC-клиент для poll/ack, mTLS")
+
+System_Ext(alloy, "Grafana Alloy", "OTel Collector", "Единый сборщик observability")
+System_Ext(prometheus, "Prometheus", "Metrics Backend", "Хранение и запрос метрик")
+System_Ext(loki, "Loki", "Logging Backend", "Хранение и запрос логов")
+System_Ext(tempo, "Tempo", "Tracing Backend", "Хранение и запрос трейсов")
+
+Rel(api_gateway, grpc_server, "gRPC /api/v1/send-command\n(Admin, JWT+IP check)", "gRPC over HTTP/2 + mTLS")
+Rel(grpc_server, postgres, "SQL-запросы", "TCP/5432 + SSL")
+Rel(iot_device, grpc_server, "gRPC poll/ack\n(mTLS + IP Whitelist)", "gRPC over HTTP/2 + mTLS")
+
+Rel(command_service, alloy, "Observability:\n• Метрики: /metrics (Prometheus)\n• Логи: slog JSON (loki.source.api)\n• Трейсы: OTLP/gRPC", "OpenTelemetry")
+
+Rel(alloy, prometheus, "Метрики: remote_write", "Prometheus Remote Write API")
+Rel(alloy, loki, "Логи: push", "Loki Push API")
+Rel(alloy, tempo, "Трейсы: forward", "OTLP/gRPC")
+@enduml

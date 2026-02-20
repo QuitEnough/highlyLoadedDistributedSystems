@@ -37,6 +37,7 @@ System_Boundary(iot_platform, "IoT Monitoring Platform") {
     Container(device_collector, "device-collector-service", "Spring Boot 3.5", "Сбор и обработка устройств из Kafka с шардированием")
     Container(device_service, "device-service", "Spring Boot 3.5", "CRUD API для устройств")
     Container(failed_events_processor, "failed-events-processor", "Spring Boot 3.5", "Обработка DLT-сообщений")
+    Container(router_manager, "router-manager-service", "Go 1.20 + gRPC", "Управление командами для IoT-роутеров")
 }
 
 Rel(engineer, api_gateway, "HTTPS + JWT", "REST API")
@@ -46,6 +47,8 @@ Rel(iot_device, kafka, "Телеметрия (Avro)", "Kafka/Avro [ПЛАНИР�
 Rel(engineer, grafana, "Мониторинг", "HTTP (дашборды)")
 Rel(engineer, keycloak, "Вход в систему", "Keycloak (OIDC)")
 Rel(engineer, camunda, "Мониторинг процессов", "HTTP (Camunda Cockpit)")
+Rel(api_gateway, router_manager, "gRPC /api/v1/send-command\n(Admin, JWT+OIDC)", "gRPC over HTTP/2 + mTLS")
+Rel(iot_device, router_manager, "gRPC poll/ack\n(mTLS + IP Whitelist)", "gRPC over HTTP/2 + mTLS")
 
 Rel(kafka, events_collector, "Потребление событий из топика 'events'", "Kafka Consumer (Avro)")
 Rel(events_collector, schema_registry, "Получение Avro-схемы", "HTTP REST")
@@ -70,6 +73,9 @@ Rel(kafka, failed_events_processor, "Потребление из dlt-topic", "Ka
 Rel(failed_events_processor, schema_registry, "Получение Avro-схемы", "HTTP REST")
 Rel(failed_events_processor, minio, "S3 PUT → bucket 'failed-events'", "MinIO SDK (Java)")
 Rel(failed_events_processor, alloy, "Метрики: processed_events_total, errors_total\nHealth: /actuator/health", "OpenTelemetry + Spring Actuator")
+
+Rel(router_manager, postgres, "CRUD: routers, commands\n(атомарные транзакции)", "pgx + SSL")
+Rel(router_manager, alloy, "Метрики, логи, трейсы")
 
 Rel(loki, minio, "S3 PUT/GET → bucket 'logs'\n(loki-config.yaml)", "AWS S3 API")
 Rel(tempo, minio, "S3 PUT/GET → bucket 'traces'\n(tempo-config.yaml)", "AWS S3 API")

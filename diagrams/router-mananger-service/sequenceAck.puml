@@ -1,0 +1,200 @@
+@startuml Sequence - Ack Command
+skinparam sequenceMessageAlign center
+autonumber
+
+participant "IoT Device (Router)" as Router #DDFFDD
+participant "router-manager-service\ngRPC Server" as Grpc #BBFFFF
+participant "Security Middleware" as Sec #FFDDDD
+participant "Command Repository" as CmdRepo
+database "PostgreSQL" as DB #DDFFDD
+participant "Metrics" as Metrics #FFEECC
+participant "Logger" as Logger #EEFFEE
+participant "Tracer" as Tracer #CCCCFF
+
+== Роутер подтверждает выполнение команды (Ack) ==
+
+Router -> Grpc: gRPC AckCommand{router_id, command_id, result?, error?}\n[mTLS + IP Whitelist]
+activate Router
+activate Grpc
+
+Grpc -> Tracer: Start span "ack-command"\n(trace_id, span_id, command_id, router_id)
+activate Tracer
+Tracer --> Grpc: span context
+deactivate Tracer
+
+Grpc -> Sec: Check: IP Whitelist, Rate Limit, mTLS cert
+activate Sec
+Sec --> Grpc: OK / Error(403)
+deactivate Sec
+
+alt Проверка не пройдена
+    Grpc -> Tracer: Record error "permission_denied"
+    activate Tracer
+    Tracer --> Grpc: recorded
+    deactivate Tracer
+
+    Grpc --> Router: gRPC error (PERMISSION_DENIED)
+    deactivate Grpc
+    deactivate Router
+else Проверка успешна
+    Grpc -> Tracer: Start span "acknowledge-command"
+    activate Tracer
+    Tracer --> Grpc: child span
+    deactivate Tracer
+
+    Grpc -> CmdRepo: AcknowledgeCommand(command_id, router_id, status)\n[span context]
+    activate CmdRepo
+
+    ' === АТОМАРНОСТЬ: проверка + обновление в одной транзакции ===
+    CmdRepo -> DB: BEGIN
+    activate DB
+
+    CmdRepo -> Tracer: Start span "db-select-command"
+    activate Tracer
+    Tracer --> CmdRepo: child span
+    deactivate Tracer
+
+    CmdRepo -> DB: SELECT router_id, status FROM commands WHERE id=$1 FOR UPDATE
+    activate DB
+    DB --> CmdRepo: command_row{router_id, status}
+    deactivate DB
+
+    CmdRepo -> Tracer: End span "db-select-command"
+    activate Tracer
+    Tracer --> CmdRepo: ended
+    deactivate Tracer
+
+    alt Команда найдена и принадлежит роутеру
+        alt Статус = SENT (ожидаем ack)
+            CmdRepo -> Tracer: Start span "db-update-acked"
+            activate Tracer
+            Tracer --> CmdRepo: child span
+            deactivate Tracer
+
+            CmdRepo -> DB: UPDATE commands \nSET status='ACKED', acked_at=NOW(), result=$2 \nWHERE id=$1 AND router_id=$2
+            activate DB
+            DB --> CmdRepo: rows_updated=1
+            deactivate DB
+
+            CmdRepo -> Tracer: End span "db-update-acked"
+            activate Tracer
+            Tracer --> CmdRepo: ended
+            deactivate Tracer
+
+            CmdRepo -> DB: COMMIT
+            deactivate DB
+
+            par Логирование и метрики
+                CmdRepo -> Logger: Log: "Command acked"\n{command_id, router_id, status=ACKED}\n[trace_id]
+                activate Logger
+                Logger --> CmdRepo: logged
+                deactivate Logger
+
+                CmdRepo -> Metrics: Inc: commands_acked_total{type, router_id}
+                activate Metrics
+                Metrics --> CmdRepo: metric updated
+                deactivate Metrics
+
+                CmdRepo -> Metrics: Observe: ack_latency_seconds{type}
+                activate Metrics
+                Metrics --> CmdRepo: observed
+                deactivate Metrics
+            end
+
+            CmdRepo -> Tracer: Set span attribute "status=ACKED"
+            activate Tracer
+            Tracer --> CmdRepo: attributes set
+            deactivate Tracer
+
+            CmdRepo -> Tracer: End span "acknowledge-command"
+            activate Tracer
+            Tracer --> CmdRepo: ended
+            deactivate Tracer
+
+            CmdRepo --> Grpc: nil (success)
+        else Статус ≠ SENT или router_id не совпадает
+            CmdRepo -> DB: ROLLBACK
+            deactivate DB
+
+            CmdRepo -> Tracer: Record error "invalid_state"
+            activate Tracer
+            Tracer --> CmdRepo: recorded
+            deactivate Tracer
+
+            CmdRepo -> Tracer: End span "acknowledge-command"
+            activate Tracer
+            Tracer --> CmdRepo: ended
+            deactivate Tracer
+
+            CmdRepo -> Logger: Log: "Ack rejected"\n{command_id, reason="invalid_state"}\n[trace_id]
+            activate Logger
+            Logger --> CmdRepo: logged
+            deactivate Logger
+            CmdRepo --> Grpc: error (INVALID_STATE)
+        end
+    else Команда не найдена
+        CmdRepo -> DB: ROLLBACK
+        deactivate DB
+
+        CmdRepo -> Tracer: Record error "not_found"
+        activate Tracer
+        Tracer --> CmdRepo: recorded
+        deactivate Tracer
+
+        CmdRepo -> Tracer: End span "acknowledge-command"
+        activate Tracer
+        Tracer --> CmdRepo: ended
+        deactivate Tracer
+
+        CmdRepo -> Logger: Log: "Ack failed"\n{command_id, reason="not_found"}\n[trace_id]
+        activate Logger
+        Logger --> CmdRepo: logged
+        deactivate Logger
+        CmdRepo --> Grpc: error (NOT_FOUND)
+    end
+
+    deactivate CmdRepo
+
+    Grpc -> Tracer: Export spans to Alloy\n[OTLP/gRPC: trace_id, spans[]]
+    activate Tracer
+    Tracer --> Grpc: exported
+    deactivate Tracer
+
+    alt Успех
+        Grpc --> Router: gRPC AckResponse{status: "ACKED"}
+        deactivate Grpc
+        deactivate Router
+    else Ошибка
+        Grpc --> Router: gRPC error (NOT_FOUND / INVALID_STATE)
+        deactivate Grpc
+        deactivate Router
+    end
+end
+
+note right of DB
+  Полный цикл команды:
+  PENDING (create) → SENT (poll) → ACKED/FAILED (ack)
+
+  Атомарность: проверка владельца +
+  обновление статуса в одной транзакции
+  предотвращает race conditions.
+end note
+
+note right of Metrics
+  Observability:
+  • commands_acked_total{type, router_id, result}
+  • commands_failed_total{type, router_id}
+  • ack_latency_seconds{type} — время от SENT до ACKED
+  • command_lifecycle_duration_seconds — полный цикл
+end note
+
+note right of Tracer
+  Tracing:
+  • trace_id: уникальный ID ack-запроса
+  • span "acknowledge-command": основная операция
+  • span "db-select-command": проверка команды
+  • span "db-update-acked": обновление статуса
+  • attributes: command_id, router_id, status, result
+  • Export: OTLP/gRPC → Alloy → Tempo
+end note
+@enduml

@@ -1,0 +1,189 @@
+@startuml Sequence - Send Command
+skinparam sequenceMessageAlign center
+autonumber
+
+actor "Admin / External Client" as Admin
+participant "API Gateway" as Gateway #DDDDDD
+participant "router-manager-service\ngRPC Server" as Grpc #BBFFFF
+participant "Security Middleware" as Sec #FFDDDD
+participant "Command Service" as CmdSvc #FFFFBB
+participant "Validation" as Val
+participant "Command Repository" as CmdRepo
+database "PostgreSQL" as DB #DDFFDD
+participant "Metrics" as Metrics #FFEECC
+participant "Logger" as Logger #EEFFEE
+participant "Tracer" as Tracer #CCCCFF
+
+== Отправка команды (Admin → Service) ==
+
+Admin -> Gateway: POST /api/v1/send-command\n{router_id?, command_type, payload}
+activate Admin
+activate Gateway
+
+Gateway -> Grpc: gRPC SendCommand(request)\n[JWT + mTLS]\ntraceparent: 00-traceid-spanid-01
+activate Grpc
+
+Grpc -> Tracer: Start span "send-command"\n(trace_id, span_id, parent_id)
+activate Tracer
+Tracer --> Grpc: span context
+deactivate Tracer
+
+Grpc -> Sec: Check: IP Whitelist, Rate Limit, JWT
+activate Sec
+Sec --> Grpc: OK / Error(403/429)
+deactivate Sec
+
+alt Проверка не пройдена
+    Grpc -> Tracer: Record error "permission_denied"
+    activate Tracer
+    Tracer --> Grpc: recorded
+    deactivate Tracer
+
+    Grpc --> Gateway: gRPC error (PERMISSION_DENIED / RESOURCE_EXHAUSTED)
+    Gateway --> Admin: HTTP 403/429
+    deactivate Grpc
+    deactivate Gateway
+    deactivate Admin
+else Проверка успешна
+    Grpc -> CmdSvc: ExecuteSendCommand(request)\n[span context]
+    activate CmdSvc
+
+    CmdSvc -> Tracer: Start span "validate-command"
+    activate Tracer
+    Tracer --> CmdSvc: child span
+    deactivate Tracer
+
+    CmdSvc -> Val: ValidateRequest(request)
+    activate Val
+    Val --> CmdSvc: error / nil
+    deactivate Val
+
+    CmdSvc -> Tracer: End span "validate-command"
+    activate Tracer
+    Tracer --> CmdSvc: ended
+    deactivate Tracer
+
+    alt Валидация не пройдена
+        CmdSvc -> Tracer: Record error "validation_failed"
+        activate Tracer
+        Tracer --> CmdSvc: recorded
+        deactivate Tracer
+
+        CmdSvc --> Grpc: ValidationError
+        Grpc --> Gateway: gRPC error (INVALID_ARGUMENT)
+        Gateway --> Admin: HTTP 400
+        deactivate CmdSvc
+        deactivate Grpc
+        deactivate Gateway
+        deactivate Admin
+    else Валидация успешна
+        CmdSvc -> Tracer: Start span "find-routers"
+        activate Tracer
+        Tracer --> CmdSvc: child span
+        deactivate Tracer
+
+        CmdSvc -> CmdRepo: FindRouters(router_id or ALL)
+        activate CmdRepo
+        CmdRepo -> DB: SELECT FROM routers [WHERE id=$1 or ALL]
+        activate DB
+        DB --> CmdRepo: []Router
+        deactivate DB
+        CmdRepo --> CmdSvc: routers[]
+        deactivate CmdRepo
+
+        CmdSvc -> Tracer: End span "find-routers"
+        activate Tracer
+        Tracer --> CmdSvc: ended
+        deactivate Tracer
+
+        par Для каждого роутера (массовая команда)
+            CmdSvc -> Tracer: Start span "create-command"
+            activate Tracer
+            Tracer --> CmdSvc: child span
+            deactivate Tracer
+
+            CmdSvc -> CmdRepo: CreateCommand(router_id, type, payload, PENDING)
+            activate CmdRepo
+            CmdRepo -> DB: BEGIN; INSERT INTO commands ... RETURNING id; COMMIT
+            activate DB
+            DB --> CmdRepo: command_id
+            deactivate DB
+            CmdRepo --> CmdSvc: Command{status=PENDING}
+            deactivate CmdRepo
+
+            CmdSvc -> Tracer: Set span attribute "command_id", "router_id"
+            activate Tracer
+            Tracer --> CmdSvc: attributes set
+            deactivate Tracer
+
+            CmdSvc -> Tracer: End span "create-command"
+            activate Tracer
+            Tracer --> CmdSvc: ended
+            deactivate Tracer
+
+            CmdSvc -> Logger: Log: "Command created"\n{command_id, router_id, status}\n[trace_id]
+            activate Logger
+            Logger --> CmdSvc: logged
+            deactivate Logger
+
+            CmdSvc --> CmdSvc: metrics.commandSentTotal.Inc()\n[Alloy scrapes /metrics]
+            note right of CmdSvc
+              Alloy (prometheus.scrape) периодически
+              опрашивает /metrics и пушит в Prometheus
+            end note
+        end
+
+        CmdSvc -> Tracer: Start span "export-traces"
+        activate Tracer
+        Tracer --> CmdSvc: batch export
+        deactivate Tracer
+
+        CmdSvc --> Grpc: SendCommandResponse{command_ids[]}
+        deactivate CmdSvc
+
+        Grpc -> Tracer: End span "send-command"\n(status=OK)
+        activate Tracer
+        Tracer --> Grpc: span ended
+        deactivate Tracer
+
+        Grpc -> Tracer: Export spans to Alloy\n[OTLP/gRPC: trace_id, spans[]]
+        activate Tracer
+        Tracer --> Grpc: exported
+        deactivate Tracer
+
+        Grpc -> Logger: Log: "SendCommand completed"\n{count=len(ids)}\n[trace_id]
+        activate Logger
+        Logger --> Grpc: logged
+        deactivate Logger
+
+        Grpc --> Gateway: gRPC response OK
+        deactivate Grpc
+        Gateway --> Admin: HTTP 201 {command_ids: [...]}
+        deactivate Gateway
+        deactivate Admin
+    end
+end
+
+note right of DB
+  Атомарность: каждая команда
+  сохраняется в отдельной транзакции.
+  При массовых командах —
+  возможна оптимизация через batch INSERT.
+end note
+
+note right of Metrics
+  Observability:
+  • command_sent_total{type, router_id}
+  • send_command_duration_seconds
+  • errors_total{source="validation"}
+end note
+
+note right of Tracer
+  Tracing:
+  • trace_id: уникальный ID запроса
+  • span_id: ID операции
+  • parent_id: связь с родительским span
+  • attributes: command_id, router_id, status
+  • Export: OTLP/gRPC → Alloy → Tempo
+end note
+@enduml

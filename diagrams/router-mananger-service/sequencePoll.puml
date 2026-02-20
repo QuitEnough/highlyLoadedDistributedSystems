@@ -1,0 +1,178 @@
+@startuml Sequence - Poll Commands
+skinparam sequenceMessageAlign center
+autonumber
+
+participant "IoT Device (Router)" as Router #DDFFDD
+participant "router-manager-service\ngRPC Server" as Grpc #BBFFFF
+participant "Security Middleware" as Sec #FFDDDD
+participant "Router Service" as RouterSvc #FFFFBB
+participant "Command Repository" as CmdRepo
+database "PostgreSQL" as DB #DDFFDD
+participant "Metrics" as Metrics #FFEECC
+participant "Logger" as Logger #EEFFEE
+participant "Tracer" as Tracer #CCCCFF
+
+== Роутер запрашивает свои команды (Poll) ==
+
+Router -> Grpc: gRPC PollCommands{router_id}\n[mTLS + IP Whitelist]
+activate Router
+activate Grpc
+
+Grpc -> Tracer: Start span "poll-commands"\n(trace_id, span_id, router_id)
+activate Tracer
+Tracer --> Grpc: span context
+deactivate Tracer
+
+Grpc -> Sec: Check: IP Whitelist, Rate Limit, mTLS cert
+activate Sec
+Sec --> Grpc: OK / Error(403)
+deactivate Sec
+
+alt Проверка не пройдена
+    Grpc -> Tracer: Record error "permission_denied"
+    activate Tracer
+    Tracer --> Grpc: recorded
+    deactivate Tracer
+
+    Grpc --> Router: gRPC error (PERMISSION_DENIED)
+    deactivate Grpc
+    deactivate Router
+else Проверка успешна
+    Grpc -> Tracer: Start span "update-last-seen"
+    activate Tracer
+    Tracer --> Grpc: child span
+    deactivate Tracer
+
+    Grpc -> RouterSvc: UpdateLastSeen(router_id)\n[span context]
+    activate RouterSvc
+
+    ' === ЛОГИКА: обновление last_seen_at ===
+    RouterSvc -> DB: UPDATE routers SET last_seen_at = NOW() WHERE id = $1
+    activate DB
+    DB --> RouterSvc: rows_affected
+    deactivate DB
+    RouterSvc --> Grpc: nil / error
+    deactivate RouterSvc
+
+    Grpc -> Tracer: End span "update-last-seen"
+    activate Tracer
+    Tracer --> Grpc: ended
+    deactivate Tracer
+
+    Grpc -> Tracer: Start span "get-pending-commands"
+    activate Tracer
+    Tracer --> Grpc: child span
+    deactivate Tracer
+
+    Grpc -> CmdRepo: GetPendingCommands(router_id)
+    activate CmdRepo
+
+    ' === АТОМАРНОСТЬ: SELECT FOR UPDATE SKIP LOCKED ===
+    CmdRepo -> DB: BEGIN;
+    activate DB
+    CmdRepo -> DB: SELECT * FROM commands \nWHERE router_id=$1 AND status='PENDING' \nORDER BY created_at \nFOR UPDATE SKIP LOCKED
+    activate DB
+    DB --> CmdRepo: []Command
+    deactivate DB
+
+    alt Команды найдены
+        CmdRepo -> DB: UPDATE commands SET status='SENT', sent_at=NOW() \nWHERE id = ANY($1)
+        activate DB
+        DB --> CmdRepo: rows_updated
+        deactivate DB
+        CmdRepo -> DB: COMMIT
+        deactivate DB
+        CmdRepo --> Grpc: []Command{status=SENT}
+        deactivate CmdRepo
+
+        Grpc -> Tracer: Set span attribute "commands_count"
+        activate Tracer
+        Tracer --> Grpc: attributes set
+        deactivate Tracer
+
+        Grpc -> Tracer: End span "get-pending-commands"
+        activate Tracer
+        Tracer --> Grpc: ended
+        deactivate Tracer
+
+        par Логирование и метрики
+            Grpc -> Logger: Log: "Commands polled"\n{router_id, count=len}\n[trace_id]
+            activate Logger
+            Logger --> Grpc: logged
+            deactivate Logger
+
+            Grpc -> Metrics: Inc: commands_polled_total{router_id}
+            activate Metrics
+            Metrics --> Grpc: metric updated
+            deactivate Metrics
+
+            Grpc -> Metrics: Observe: poll_latency_seconds
+            activate Metrics
+            Metrics --> Grpc: observed
+            deactivate Metrics
+        end
+
+        Grpc -> Tracer: Export spans to Alloy\n[OTLP/gRPC]
+        activate Tracer
+        Tracer --> Grpc: exported
+        deactivate Tracer
+
+        Grpc --> Router: gRPC PollResponse{commands: [...]}
+        deactivate Grpc
+        Router --> Router: Execute commands locally
+        deactivate Router
+    else Команд не найдено
+        CmdRepo -> DB: COMMIT
+        deactivate DB
+        CmdRepo --> Grpc: empty list
+        deactivate CmdRepo
+
+        Grpc -> Tracer: Set span attribute "commands_count=0"
+        activate Tracer
+        Tracer --> Grpc: attributes set
+        deactivate Tracer
+
+        Grpc -> Tracer: End span "get-pending-commands"
+        activate Tracer
+        Tracer --> Grpc: ended
+        deactivate Tracer
+
+        Grpc -> Logger: Log: "No pending commands"\n{router_id}\n[trace_id]
+        activate Logger
+        Logger --> Grpc: logged
+        deactivate Logger
+
+        Grpc -> Tracer: Export spans to Alloy\n[OTLP/gRPC]
+        activate Tracer
+        Tracer --> Grpc: exported
+        deactivate Tracer
+
+        Grpc --> Router: gRPC PollResponse{commands: []}
+        deactivate Grpc
+        deactivate Router
+    end
+end
+
+note right of DB
+  Атомарность: выборка PENDING-команд
+  и обновление на SENT выполняются
+  в одной транзакции с SELECT FOR UPDATE SKIP LOCKED
+  для избежания дублирования при конкурентных poll.
+end note
+
+note right of Metrics
+  Observability:
+  • commands_polled_total{router_id}
+  • poll_latency_seconds
+  • commands_pending_gauge{router_id}
+end note
+
+note right of Tracer
+  Tracing:
+  • trace_id: уникальный ID poll-запроса
+  • span "update-last-seen": обновление last_seen_at
+  • span "get-pending-commands": выборка команд
+  • attributes: router_id, commands_count
+  • Export: OTLP/gRPC → Alloy → Tempo
+end note
+@enduml
